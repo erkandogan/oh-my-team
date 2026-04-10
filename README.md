@@ -6,6 +6,8 @@
     Turn your AI coding session into a coordinated development team.
   </p>
   <p align="center">
+    <a href="https://www.npmjs.com/package/oh-my-team"><img src="https://img.shields.io/npm/v/oh-my-team?color=red" alt="npm version"></a>
+    <a href="https://www.npmjs.com/package/oh-my-team"><img src="https://img.shields.io/npm/dm/oh-my-team?color=orange" alt="npm downloads"></a>
     <a href="https://github.com/erkandogan/oh-my-team/stargazers"><img src="https://img.shields.io/github/stars/erkandogan/oh-my-team?style=flat&color=yellow" alt="GitHub stars"></a>
     <a href="https://github.com/erkandogan/oh-my-team/blob/main/LICENSE"><img src="https://img.shields.io/github/license/erkandogan/oh-my-team?color=blue" alt="License: MIT"></a>
     <a href="https://github.com/erkandogan/oh-my-team/issues"><img src="https://img.shields.io/github/issues/erkandogan/oh-my-team?color=green" alt="Issues"></a>
