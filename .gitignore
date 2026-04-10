@@ -1,0 +1,20 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary
+*.tmp
+*.log
+
+# Node (shouldn't exist, but just in case)
+node_modules/
+
+# Claude Code local state
+.sisyphus/

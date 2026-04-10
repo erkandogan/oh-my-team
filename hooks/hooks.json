@@ -1,0 +1,50 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat /dev/stdin | python3 -c \"\nimport sys, json\ntry:\n    data = json.load(sys.stdin)\n    prompt = data.get('prompt', '')\n    # Skip team injection for trivial prompts\n    trivial_keywords = ['help', 'what is', 'explain', 'how do i', '/help', '/init', '/clear', 'yes', 'no', 'go', 'ok', 'continue', 'stop']\n    is_trivial = len(prompt.split()) < 5 or any(prompt.lower().strip().startswith(k) for k in trivial_keywords)\n    if is_trivial:\n        print(json.dumps({}))\n    else:\n        ctx = 'SISYPHUS ORCHESTRATION REMINDER: You are Sisyphus, a team orchestrator. For this task, you MUST create an agent team using TeamCreate before doing any implementation work. Propose a team structure with specialized teammates (explorer, librarian, hephaestus, oracle, etc.) and create the team. Do NOT work alone on non-trivial tasks.'\n        print(json.dumps({'additionalContext': ctx}))\nexcept:\n    print('{}')\n\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"message\": \"Verify: diagnostics clean? Matches existing patterns?\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"message\": \"Task completed. Read changed files to verify before proceeding.\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p .sisyphus/plans .sisyphus/drafts .sisyphus/notepads 2>/dev/null; echo '{}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
