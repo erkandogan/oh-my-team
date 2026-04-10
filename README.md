@@ -1,4 +1,5 @@
 <p align="center">
+  <img src="image.svg" alt="Oh My Team" width="200">
   <h1 align="center">Oh My Team</h1>
   <p align="center">
     Multi-agent orchestration plugin for Claude Code.<br/>
