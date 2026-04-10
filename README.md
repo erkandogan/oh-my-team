@@ -5,6 +5,12 @@
     Turn your AI coding session into a coordinated development team.
   </p>
   <p align="center">
+    <a href="https://github.com/erkandogan/oh-my-team/stargazers"><img src="https://img.shields.io/github/stars/erkandogan/oh-my-team?style=flat&color=yellow" alt="GitHub stars"></a>
+    <a href="https://github.com/erkandogan/oh-my-team/blob/main/LICENSE"><img src="https://img.shields.io/github/license/erkandogan/oh-my-team?color=blue" alt="License: MIT"></a>
+    <a href="https://github.com/erkandogan/oh-my-team/issues"><img src="https://img.shields.io/github/issues/erkandogan/oh-my-team?color=green" alt="Issues"></a>
+    <a href="https://github.com/erkandogan/oh-my-team/commits/main"><img src="https://img.shields.io/github/last-commit/erkandogan/oh-my-team" alt="Last commit"></a>
+  </p>
+  <p align="center">
     <a href="https://ohmyteam.cc">Website</a> &middot;
     <a href="#installation">Install</a> &middot;
     <a href="#quick-start">Quick Start</a> &middot;
