@@ -1,0 +1,49 @@
+{
+  "name": "oh-my-team",
+  "version": "1.0.0",
+  "description": "Multi-agent orchestration plugin for Claude Code. Turn your AI coding session into a coordinated development team.",
+  "bin": {
+    "omt": "./bin/omt"
+  },
+  "scripts": {
+    "postinstall": "node ./bin/postinstall.js"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "ai",
+    "multi-agent",
+    "orchestration",
+    "agent-teams",
+    "plugin",
+    "claude-code-plugin",
+    "tmux",
+    "ai-coding"
+  ],
+  "author": "Erkan DOGAN",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erkandogan/oh-my-team.git"
+  },
+  "homepage": "https://ohmyteam.cc",
+  "bugs": {
+    "url": "https://github.com/erkandogan/oh-my-team/issues"
+  },
+  "files": [
+    "bin/",
+    "agents/",
+    "skills/",
+    "hooks/",
+    "settings.json",
+    "CLAUDE.md",
+    ".claude-plugin/",
+    ".mcp.json",
+    "install.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}

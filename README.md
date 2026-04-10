@@ -60,16 +60,18 @@ Oh My Team brings the multi-agent orchestration experience pioneered by [Oh My O
 
 ## Installation
 
-### One-liner
+### npm (recommended)
 
 ```bash
-git clone https://github.com/erkan/oh-my-team.git /tmp/oh-my-team && /tmp/oh-my-team/install.sh
+npm i -g oh-my-team
 ```
 
-### Manual
+That's it. The postinstall script configures everything automatically.
+
+### Git clone
 
 ```bash
-git clone https://github.com/erkan/oh-my-team.git
+git clone https://github.com/erkandogan/oh-my-team.git
 cd oh-my-team
 ./install.sh
 ```

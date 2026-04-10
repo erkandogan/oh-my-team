@@ -1,0 +1,40 @@
+#!/bin/bash
+# omt — Oh My Team CLI wrapper
+# Launches Claude Code with the Oh My Team plugin inside tmux
+
+# Resolve plugin directory (works for both npm global install and local)
+if [ -d "$HOME/.oh-my-team/agents" ]; then
+    PLUGIN_DIR="$HOME/.oh-my-team"
+elif [ -d "$(dirname "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")")/agents" ]; then
+    PLUGIN_DIR="$(dirname "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")")"
+else
+    echo "Error: Oh My Team plugin not found."
+    echo "Run: omt-install  (or: npm i -g oh-my-team)"
+    exit 1
+fi
+
+# Expand shortcuts
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        -d|--danger) ARGS+=("--dangerously-skip-permissions") ;;
+        *)           ARGS+=("$arg") ;;
+    esac
+done
+
+# If already inside tmux, just run claude directly
+if [ -n "$TMUX" ]; then
+    exec claude --plugin-dir "$PLUGIN_DIR" "${ARGS[@]}"
+fi
+
+# If tmux is available, launch claude inside a new tmux session
+if command -v tmux &>/dev/null; then
+    SESSION_NAME="omt-$$"
+    INNER_CMD="claude --plugin-dir '$PLUGIN_DIR'"
+    for a in "${ARGS[@]}"; do
+        INNER_CMD="$INNER_CMD '$a'"
+    done
+    exec tmux new-session -s "$SESSION_NAME" "$INNER_CMD; echo 'Press any key to exit...'; read -n1"
+else
+    exec claude --plugin-dir "$PLUGIN_DIR" "${ARGS[@]}"
+fi
