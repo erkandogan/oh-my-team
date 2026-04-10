@@ -58,7 +58,7 @@ Say "go" to create this team.
 
 ### Inspired by Oh My OpenCode
 
-Oh My Team brings the multi-agent orchestration experience pioneered by [Oh My OpenCode](https://github.com/code-yeongyu/oh-my-opencode) to Claude Code's native plugin system. But where OMO requires 1,146 TypeScript files and a build system, Oh My Team achieves it with **23 Markdown files** — zero dependencies, zero build step. The platform does the heavy lifting.
+Oh My Team brings the multi-agent orchestration experience pioneered by [Oh My OpenCode](https://github.com/code-yeongyu/oh-my-opencode) to Claude Code's native plugin system — as a pure Markdown plugin with zero dependencies.
 
 ## Installation
 
@@ -252,18 +252,6 @@ Oh My Team is a **pure Claude Code plugin** -- 23 Markdown files, zero build ste
 - **Hooks** (`hooks/hooks.json`) -- Auto-inject team creation reminders via `UserPromptSubmit`
 - **Agent Teams** -- Claude Code's experimental multi-session coordination
 - **Status Line** -- Custom status bar showing active agents and teams
-
-### Comparison
-
-| | Oh My OpenCode | OMO Slim | **Oh My Team** |
-|---|---|---|---|
-| Files | 1,146 TypeScript | 98 TypeScript | **23 Markdown** |
-| Build step | Bun + TypeScript | Bun + TypeScript | **None** |
-| Dependencies | 50+ npm packages | 20+ npm packages | **Zero** |
-| Agents | 65+ variants | 6 + Council | **11 focused** |
-| System prompt tokens | ~50K+ | ~10-15K | **~2-5K** |
-| Platform | OpenCode | OpenCode | **Claude Code** |
-| Install | npm install + config | npm install + config | **One script** |
 
 ## Status Line
 
