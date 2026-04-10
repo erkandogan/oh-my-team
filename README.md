@@ -58,13 +58,24 @@ Say "go" to create this team.
 
 ## Installation
 
-### npm (recommended)
+### Claude Code Plugin (recommended)
+
+Inside a Claude Code session:
+
+```
+/plugin marketplace add erkandogan/oh-my-team
+/plugin install oh-my-team
+```
+
+Then run `/reload-plugins` to activate.
+
+### npm
 
 ```bash
 npm i -g oh-my-team
 ```
 
-That's it. The postinstall script configures everything automatically.
+Installs the `omt` CLI and configures Claude Code automatically.
 
 ### Git clone
 

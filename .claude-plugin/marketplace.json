@@ -1,0 +1,10 @@
+{
+  "plugins": [
+    {
+      "name": "oh-my-team",
+      "description": "Multi-agent orchestration plugin for Claude Code. Turn your AI coding session into a coordinated development team with 11 specialized agents, parallel execution, and tmux split-pane visibility.",
+      "version": "1.0.0",
+      "path": "."
+    }
+  ]
+}
