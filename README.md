@@ -56,10 +56,6 @@ Say "go" to create this team.
 | No quality gates | 5-agent parallel review catches everything |
 | Agent does work without planning | Structured: plan, execute, verify |
 
-### Inspired by Oh My OpenCode
-
-Oh My Team brings the multi-agent orchestration experience pioneered by [Oh My OpenCode](https://github.com/code-yeongyu/oh-my-opencode) to Claude Code's native plugin system — as a pure Markdown plugin with zero dependencies.
-
 ## Installation
 
 ### npm (recommended)
