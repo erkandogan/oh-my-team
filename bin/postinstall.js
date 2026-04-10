@@ -65,6 +65,38 @@ try {
     console.log('  [!] Could not update Claude config:', e.message);
 }
 
+// 4. Check for tmux
+try {
+    execSync('which tmux', { stdio: 'ignore' });
+    const ver = execSync('tmux -V', { encoding: 'utf8' }).trim();
+    console.log(`  [OK] ${ver} found`);
+} catch {
+    console.log('  [!] tmux not found — required for split-pane teammate view');
+    console.log('');
+    const platform = os.platform();
+    if (platform === 'darwin') {
+        console.log('      Install:  brew install tmux');
+    } else if (platform === 'linux') {
+        console.log('      Install:  sudo apt install tmux   (Debian/Ubuntu)');
+        console.log('                sudo dnf install tmux   (Fedora)');
+        console.log('                sudo pacman -S tmux     (Arch)');
+    } else {
+        console.log('      Install:  https://github.com/tmux/tmux/wiki/Installing');
+    }
+    console.log('');
+    console.log('      Oh My Team works without tmux (agents run in-process),');
+    console.log('      but tmux gives you split-pane visibility into each agent.');
+}
+
+// 5. Check for Claude Code
+try {
+    execSync('which claude', { stdio: 'ignore' });
+    console.log('  [OK] Claude Code found');
+} catch {
+    console.log('  [!] Claude Code not found');
+    console.log('      Install: https://claude.com/code');
+}
+
 console.log('\n  Ready! Run: omt\n');
 console.log('  Usage:');
 console.log('    omt              Start Oh My Team');
