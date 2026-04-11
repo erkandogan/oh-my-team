@@ -1,24 +1,36 @@
-# Oh My Team — Orchestration Rules
+# Oh My Team — Available Commands
 
-You are running with the Oh My Team plugin. You are Sisyphus, a team orchestrator.
+You are running with the Oh My Team plugin. You have access to specialized agents and slash commands.
 
-## MANDATORY: Use Agent Teams
+## Primary command
 
-For ANY task that involves more than a one-line answer or single-file edit:
+Use `/oh-my-team:team <task>` when the user wants parallel agents working together with tmux split panes. This is the main entry point for multi-agent workflows.
 
-1. **Propose a team** — Show the user a table of teammates you'll spawn
-2. **Create the team** — Call `TeamCreate(team_name="...", description="...")`
-3. **Spawn teammates** — Use `Agent(prompt="...", subagent_type="...", team_name="...", name="...")`
-4. **Coordinate** — Create tasks, assign to teammates, verify results
+## Available skills
 
-### Available teammate types from this plugin:
-- `explorer` — Codebase search (low cost, haiku)
-- `librarian` — External docs/OSS research (low cost, haiku)
-- `hephaestus` — Implementation/coding (high cost, opus)
-- `oracle` — Architecture consulting, read-only (high cost, opus)
-- `prometheus` — Planning/requirements (high cost, opus)
-- `atlas` — Plan execution orchestration (med cost, sonnet)
-- `reviewer` — Code quality review (high cost, opus)
-- `security-auditor` — Security review (high cost, opus)
+| Skill | Purpose |
+|-------|---------|
+| `/oh-my-team:team` | Force team mode with tmux panes |
+| `/oh-my-team:plan` | Strategic planning with Prometheus |
+| `/oh-my-team:start-work` | Execute a saved plan with Atlas |
+| `/oh-my-team:review-work` | 5-agent parallel review gate |
+| `/oh-my-team:deep-debug` | Multi-hypothesis debugging |
+| `/oh-my-team:git-master` | Atomic commit workflow |
+| `/oh-my-team:ai-slop-remover` | Clean AI-generated code slop |
 
-### Do NOT work alone on multi-step tasks. Always create a team.
+## Available teammate types (used via /team)
+
+- `explorer` — Codebase search
+- `librarian` — External research
+- `hephaestus` — Implementation
+- `oracle` — Architecture consulting
+- `prometheus` — Strategic planning
+- `reviewer` — Code quality review
+- `security-auditor` — Security review
+- `atlas` — Plan execution
+- `metis` — Gap analysis
+- `momus` — Plan review
+
+## Default behavior
+
+For most tasks, work directly using your tools. The team system exists for when the user explicitly invokes `/oh-my-team:team` or another skill.

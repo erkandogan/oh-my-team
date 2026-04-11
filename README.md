@@ -24,36 +24,30 @@
 
 ---
 
-**Oh My Team** transforms Claude Code into a coordinated development team. Instead of one AI doing everything sequentially, you get specialized agents working in parallel — researchers exploring your codebase, architects consulting on design, builders implementing features, and reviewers auditing code quality — all visible in tmux split panes.
+**Oh My Team** gives Claude Code a full development team. Drop the `/oh-my-team:team` command into any task and watch it spawn specialized agents — researchers, builders, reviewers — working in parallel across tmux split panes.
 
 ```
 omt -d
-> Build an authentication system with OAuth and RBAC
+> /oh-my-team:team Build an authentication system with OAuth and RBAC
 
-Sisyphus: I detect implementation intent. Proposed team:
-| Teammate      | Type       | Task                           |
-|---------------|------------|--------------------------------|
-| researcher-1  | explorer   | Analyze existing auth patterns |
-| researcher-2  | librarian  | Research OAuth best practices  |
-| builder-auth  | hephaestus | Implement OAuth flow           |
-| builder-rbac  | hephaestus | Implement role-based access    |
-| reviewer      | reviewer   | Code quality review            |
+Sisyphus creates the team:
+  explorer-1    analyze existing auth patterns
+  librarian-1   research OAuth best practices
+  builder-auth  implement OAuth flow
+  builder-rbac  implement role-based access
+  reviewer      code quality review
 
-Say "go" to create this team.
-
-> go
-
-[Team created — 5 tmux panes open, each agent working on their task]
+5 tmux panes open, each agent working in parallel.
 ```
 
 ## Why Oh My Team?
 
-| Without | With Oh My Team |
+| Without | With `/oh-my-team:team` |
 |---------|----------------|
 | One agent does everything sequentially | Specialized agents work in parallel |
 | No visibility into what's happening | tmux panes show each agent live |
 | Generic approach to every task | Right specialist for each job |
-| No quality gates | 5-agent parallel review catches everything |
+| No quality gates | Dedicated reviewer and security agents |
 | Agent does work without planning | Structured: plan, execute, verify |
 
 ## Installation
@@ -128,20 +122,20 @@ omt -d -c       # danger mode + continue
 ### Your first team
 
 1. Start: `omt -d`
-2. Give a task: `Build a REST API with user authentication`
-3. Sisyphus proposes a team structure
-4. Say `go` — agents spawn in tmux panes
-5. Watch them work, or use `/oh-my-team:team` to force team mode
-
-### Force team mode
-
-If Sisyphus handles something directly that you'd prefer delegated:
+2. Trigger team mode with the `/oh-my-team:team` command:
 
 ```
-/oh-my-team:team <your task description>
+/oh-my-team:team Build a REST API with user authentication
 ```
 
-This explicitly creates an agent team with tmux panes.
+Sisyphus creates the team, spawns specialized agents in tmux panes, and coordinates them through completion.
+
+### When to use `/team` vs direct prompts
+
+- **Use `/oh-my-team:team`** when you want multiple agents working in parallel — research, implementation, review
+- **Use a direct prompt** (no skill) for single-step tasks: "fix this typo", "explain how X works", "add error handling to this function"
+
+Without `/team`, Claude Code will handle simple tasks directly — which is often faster. Use the skill when the task benefits from parallel specialists.
 
 ## Agents
 
