@@ -1,9 +1,9 @@
 {
   "name": "oh-my-team",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Multi-agent orchestration for Claude Code. 12 specialized agents, parallel execution, and a Hub for always-alive sessions controllable from Telegram.",
   "bin": {
-    "omt": "./bin/omt"
+    "omt": "bin/omt"
   },
   "scripts": {
     "postinstall": "node ./bin/postinstall.js"
