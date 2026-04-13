@@ -2,8 +2,8 @@
   <img src="image.svg" alt="Oh My Team" width="200">
   <h1 align="center">Oh My Team</h1>
   <p align="center">
-    Multi-agent orchestration plugin for Claude Code.<br/>
-    Turn your AI coding session into a coordinated development team.
+    Multi-agent orchestration for Claude Code.<br/>
+    12 specialized agents. Parallel execution. Remote control from your phone.
   </p>
   <p align="center">
     <a href="https://www.npmjs.com/package/oh-my-team"><img src="https://img.shields.io/npm/v/oh-my-team?color=red" alt="npm version"></a>
@@ -17,6 +17,7 @@
     <a href="https://ohmyteam.cc">Website</a> &middot;
     <a href="#installation">Install</a> &middot;
     <a href="#quick-start">Quick Start</a> &middot;
+    <a href="#hub">Hub</a> &middot;
     <a href="#agents">Agents</a> &middot;
     <a href="#skills">Skills</a>
   </p>
@@ -24,31 +25,53 @@
 
 ---
 
-**Oh My Team** gives Claude Code a full development team. Drop the `/oh-my-team:team` command into any task and watch it spawn specialized agents — researchers, builders, reviewers — working in parallel across tmux split panes.
+**Oh My Team** gives Claude Code a full development team — 12 specialized agents working in parallel across tmux panes. Plan, build, review, and debug with dedicated specialists instead of one AI doing everything. Run it locally, or deploy the **Hub** for always-alive multi-project sessions you control from Telegram.
+
+```
+Telegram Group: "Oh My Team Hub"
+
+General topic:
+  You: start ~/projects/my-app
+  Hub: Started. Talk to it in its topic.
+
+my-app topic:
+  You: fix the login bug and add rate limiting
+  Claude: [spawns explorer + hephaestus agents, works in parallel]
+  Claude: Fixed. auth.ts updated, rate limiter added to middleware.
+  
+  You: run the review
+  Claude: [spawns 5 review agents: goals, QA, quality, security, context]
+  Claude: REVIEW PASSED. 0 blocking issues, 2 minor suggestions.
+```
+
+Or use it locally — no Telegram required:
 
 ```
 omt -d
 > /oh-my-team:team Build an authentication system with OAuth and RBAC
 
-Sisyphus creates the team:
-  explorer-1    analyze existing auth patterns
-  librarian-1   research OAuth best practices
-  builder-auth  implement OAuth flow
-  builder-rbac  implement role-based access
-  reviewer      code quality review
-
-5 tmux panes open, each agent working in parallel.
+5 tmux panes open. Agents research, build, and review in parallel.
 ```
+
+## Two Ways to Use It
+
+| | Local Mode | Hub Mode |
+|---|---|---|
+| **Start** | `omt -d` | `omt hub start` |
+| **Interface** | Terminal + tmux panes | Telegram (or terminal) |
+| **Projects** | One at a time | Multiple, always alive |
+| **Remote** | No | Yes, from your phone |
+| **Best for** | Active coding sessions | Background work, monitoring, multi-project |
 
 ## Why Oh My Team?
 
-| Without | With `/oh-my-team:team` |
+| Without | With Oh My Team |
 |---------|----------------|
-| One agent does everything sequentially | Specialized agents work in parallel |
-| No visibility into what's happening | tmux panes show each agent live |
-| Generic approach to every task | Right specialist for each job |
-| No quality gates | Dedicated reviewer and security agents |
-| Agent does work without planning | Structured: plan, execute, verify |
+| One AI, one project, one terminal | Multiple projects, always running |
+| Close laptop = work stops | Hub keeps sessions alive |
+| No visibility while away | Telegram shows progress + asks permission |
+| One agent does everything | 12 specialists work in parallel |
+| No quality gates | 5-agent review catches what you miss |
 
 ## Installation
 

@@ -1,7 +1,7 @@
 {
   "name": "oh-my-team",
   "version": "2.0.0",
-  "description": "Multi-agent orchestration plugin for Claude Code. Turn your AI coding session into a coordinated development team.",
+  "description": "Multi-agent orchestration for Claude Code. 12 specialized agents, parallel execution, and a Hub for always-alive sessions controllable from Telegram.",
   "bin": {
     "omt": "./bin/omt"
   },
