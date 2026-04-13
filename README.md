@@ -264,20 +264,20 @@ Oh My Team is a **pure Claude Code plugin** -- 23 Markdown files, zero build ste
 
 Control your agent teams from your phone. Start persistent sessions, connect Telegram/Discord, and manage multiple projects remotely.
 
-### Always-alive sessions with `omt-hub`
+### Always-alive sessions with `omt hub`
 
 ```bash
 # Start a persistent session for a project
-omt-hub start ~/projects/my-app
+omt hub start ~/projects/my-app
 
 # Start with Telegram channel — control from your phone
-omt-hub start ~/projects/my-app --telegram
+omt hub start ~/projects/my-app --telegram
 
 # Manage sessions
-omt-hub list                    # show all active sessions
-omt-hub attach my-app           # jump into a session
-omt-hub stop my-app             # stop a session
-omt-hub status                  # overview
+omt hub list                    # show all active sessions
+omt hub attach my-app           # jump into a session
+omt hub stop my-app             # stop a session
+omt hub status                  # overview
 ```
 
 Sessions run in detached tmux — they stay alive when you close your terminal. Connect a channel to control them remotely.
@@ -294,15 +294,15 @@ Sessions run in detached tmux — they stay alive when you close your terminal. 
 
 ```bash
 # Start sessions for different projects
-omt-hub start ~/projects/frontend --telegram
-omt-hub start ~/projects/backend --telegram
-omt-hub start ~/projects/mobile
+omt hub start ~/projects/frontend --telegram
+omt hub start ~/projects/backend --telegram
+omt hub start ~/projects/mobile
 
 # Check what's running
-omt-hub status
+omt hub status
 
 # Jump into any session
-omt-hub attach frontend
+omt hub attach frontend
 ```
 
 Each session is independent — different project, different agent teams, different context. Telegram messages arrive in whichever session has the channel connected.
@@ -311,10 +311,10 @@ Each session is independent — different project, different agent teams, differ
 
 ```bash
 # 1. Start session with Telegram
-omt-hub start ~/projects/my-app --telegram
+omt hub start ~/projects/my-app --telegram
 
 # 2. Attach to configure
-omt-hub attach my-app
+omt hub attach my-app
 
 # 3. Inside the session, configure your bot token
 /telegram:configure <your-bot-token>

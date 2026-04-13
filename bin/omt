@@ -1,17 +1,144 @@
 #!/bin/bash
-# omt — Oh My Team CLI wrapper
-# Launches Claude Code with the Oh My Team plugin inside tmux
+# omt — Oh My Team CLI
+# Single entry point for sessions and hub management
+#
+# Usage:
+#   omt                         Start interactive session (in tmux)
+#   omt -d                      Start with auto-approve (danger mode)
+#   omt hub start <dir>         Start persistent background session
+#   omt hub start <dir> --telegram  Start with Telegram channel
+#   omt hub list                List active sessions
+#   omt hub attach <name>       Attach to a session
+#   omt hub stop <name>         Stop a session
+#   omt hub stop-all            Stop all sessions
+#   omt hub status              Overview
 
-# Resolve plugin directory (works for both npm global install and local)
+# Colors
+CYAN='\033[36m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'
+BOLD='\033[1m'; DIM='\033[2m'; RESET='\033[0m'
+
+# Resolve plugin directory
 if [ -d "$HOME/.oh-my-team/agents" ]; then
     PLUGIN_DIR="$HOME/.oh-my-team"
 elif [ -d "$(dirname "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")")/agents" ]; then
     PLUGIN_DIR="$(dirname "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")")"
 else
     echo "Error: Oh My Team plugin not found."
-    echo "Run: omt-install  (or: npm i -g oh-my-team)"
+    echo "Run: npm i -g oh-my-team"
     exit 1
 fi
+
+# ─── Hub commands ───────────────────────────────────────────────
+
+hub_session_name() { basename "$1" | tr './ ' '-'; }
+
+hub_start() {
+    local PROJECT_DIR="$1"; shift
+    [ -z "$PROJECT_DIR" ] && echo -e "${RED}Usage: omt hub start <project-dir> [--telegram|--discord|--imessage]${RESET}" && exit 1
+
+    PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || { echo -e "${RED}Directory not found${RESET}"; exit 1; }
+    local NAME=$(hub_session_name "$PROJECT_DIR")
+
+    tmux has-session -t "omt-$NAME" 2>/dev/null && { echo -e "${YELLOW}Already running. Use: omt hub attach $NAME${RESET}"; return 1; }
+
+    local CMD="cd '$PROJECT_DIR' && claude --plugin-dir '$PLUGIN_DIR' --dangerously-skip-permissions"
+    for arg in "$@"; do
+        case "$arg" in
+            --telegram) CMD="$CMD --channels plugin:telegram@claude-plugins-official" ;;
+            --discord)  CMD="$CMD --channels plugin:discord@claude-plugins-official" ;;
+            --imessage) CMD="$CMD --channels plugin:imessage@claude-plugins-official" ;;
+        esac
+    done
+
+    tmux new-session -d -s "omt-$NAME" "$CMD; echo 'Session ended. Press any key...'; read -n1"
+    echo -e "${GREEN}${BOLD}Started:${RESET} omt-$NAME"
+    echo -e "  ${DIM}Project:${RESET} $PROJECT_DIR"
+    echo -e "  ${DIM}Attach:${RESET}  omt hub attach $NAME"
+}
+
+hub_list() {
+    local SESSIONS=$(tmux list-sessions 2>/dev/null | grep "^omt-" | cut -d: -f1)
+    [ -z "$SESSIONS" ] && { echo -e "${DIM}No active sessions. Start one with: omt hub start <dir>${RESET}"; return; }
+
+    echo -e "${BOLD}Active sessions:${RESET}"
+    echo ""
+    while IFS= read -r session; do
+        local NAME="${session#omt-}"
+        local CWD=$(tmux display-message -t "$session" -p '#{pane_current_path}' 2>/dev/null)
+        local WINDOWS=$(tmux display-message -t "$session" -p '#{session_windows}' 2>/dev/null)
+        echo -e "  ${GREEN}${BOLD}$NAME${RESET}  ${DIM}($CWD)${RESET}  ${DIM}${WINDOWS} windows${RESET}"
+    done <<< "$SESSIONS"
+    echo ""
+}
+
+hub_attach() {
+    local NAME="$1"
+    [ -z "$NAME" ] && { echo -e "${RED}Usage: omt hub attach <name>${RESET}"; hub_list; exit 1; }
+    tmux has-session -t "omt-$NAME" 2>/dev/null || { echo -e "${RED}Session omt-$NAME not found${RESET}"; hub_list; exit 1; }
+    tmux attach-session -t "omt-$NAME"
+}
+
+hub_stop() {
+    local NAME="$1"
+    [ -z "$NAME" ] && { echo -e "${RED}Usage: omt hub stop <name>${RESET}"; exit 1; }
+    tmux has-session -t "omt-$NAME" 2>/dev/null && { tmux kill-session -t "omt-$NAME"; echo -e "${GREEN}Stopped: $NAME${RESET}"; } || echo -e "${YELLOW}Not found: $NAME${RESET}"
+}
+
+hub_stop_all() {
+    local SESSIONS=$(tmux list-sessions 2>/dev/null | grep "^omt-" | cut -d: -f1)
+    [ -z "$SESSIONS" ] && { echo -e "${DIM}No active sessions${RESET}"; return; }
+    while IFS= read -r s; do tmux kill-session -t "$s"; echo -e "${GREEN}Stopped: ${s#omt-}${RESET}"; done <<< "$SESSIONS"
+}
+
+hub_status() {
+    local COUNT=$(tmux list-sessions 2>/dev/null | grep -c "^omt-" || echo "0")
+    echo -e "${BOLD}Oh My Team Hub${RESET}"
+    echo -e "  Sessions: ${GREEN}$COUNT active${RESET}"
+    echo -e "  Plugin:   $PLUGIN_DIR"
+    echo ""
+    [ "$COUNT" -gt 0 ] && hub_list
+}
+
+hub_cmd() {
+    case "${1:-status}" in
+        start)    shift; hub_start "$@" ;;
+        list|ls)  hub_list ;;
+        attach|a) shift; hub_attach "$@" ;;
+        stop)     shift; hub_stop "$@" ;;
+        stop-all) hub_stop_all ;;
+        status)   hub_status ;;
+        *)        echo -e "${RED}Unknown hub command: $1${RESET}"; echo "Run: omt hub help"; exit 1 ;;
+    esac
+}
+
+# ─── Main router ───────────────────────────────────────────────
+
+if [ "$1" = "hub" ]; then
+    shift
+    hub_cmd "$@"
+    exit $?
+fi
+
+if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    echo "omt — Oh My Team CLI"
+    echo ""
+    echo "Interactive session:"
+    echo "  omt                              Start Oh My Team"
+    echo "  omt -d                           Start with auto-approve"
+    echo "  omt -c                           Continue last session"
+    echo ""
+    echo "Hub (persistent sessions):"
+    echo "  omt hub start <dir>              Start background session"
+    echo "  omt hub start <dir> --telegram   Start with Telegram channel"
+    echo "  omt hub list                     List active sessions"
+    echo "  omt hub attach <name>            Attach to a session"
+    echo "  omt hub stop <name>              Stop a session"
+    echo "  omt hub stop-all                 Stop all sessions"
+    echo "  omt hub status                   Overview"
+    exit 0
+fi
+
+# ─── Interactive session ──────────────────────────────────────
 
 # Expand shortcuts
 ARGS=()
