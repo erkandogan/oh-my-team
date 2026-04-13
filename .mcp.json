@@ -1,3 +1,8 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "omt-bridge": {
+      "command": "bun",
+      "args": ["run", "${CLAUDE_PLUGIN_ROOT}/channel/bridge.ts"]
+    }
+  }
 }

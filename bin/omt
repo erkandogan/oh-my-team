@@ -555,17 +555,17 @@ done
 
 # If already inside tmux, just run claude directly
 if [ -n "$TMUX" ]; then
-    exec claude --plugin-dir "$PLUGIN_DIR" "${ARGS[@]}"
+    exec claude --plugin-dir "$PLUGIN_DIR" --agent sisyphus "${ARGS[@]}"
 fi
 
 # If tmux is available, launch claude inside a new tmux session
 if command -v tmux &>/dev/null; then
     SESSION_NAME="omt-$$"
-    INNER_CMD="claude --plugin-dir '$PLUGIN_DIR'"
+    INNER_CMD="claude --plugin-dir '$PLUGIN_DIR' --agent sisyphus"
     for a in "${ARGS[@]}"; do
         INNER_CMD="$INNER_CMD '$a'"
     done
     exec tmux new-session -s "$SESSION_NAME" "$INNER_CMD; echo 'Press any key to exit...'; read -n1"
 else
-    exec claude --plugin-dir "$PLUGIN_DIR" "${ARGS[@]}"
+    exec claude --plugin-dir "$PLUGIN_DIR" --agent sisyphus "${ARGS[@]}"
 fi
