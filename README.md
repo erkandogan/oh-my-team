@@ -3,7 +3,7 @@
   <h1 align="center">Oh My Team</h1>
   <p align="center">
     Multi-agent orchestration for Claude Code.<br/>
-    12 specialized agents. Parallel execution. Remote control from your phone.
+    12 specialized agents. Parallel execution. Remote control via channels from any device.
   </p>
   <p align="center">
     <a href="https://www.npmjs.com/package/oh-my-team"><img src="https://img.shields.io/npm/v/oh-my-team?color=red" alt="npm version"></a>
@@ -64,7 +64,7 @@ omt -d
 | **Start** | `omt -d` | `omt hub start` |
 | **Interface** | Terminal + tmux panes | Telegram (or terminal) |
 | **Projects** | One at a time | Multiple, always alive |
-| **Remote** | No | Yes, from your phone |
+| **Remote** | No | Yes, via channels from any device |
 | **Best for** | Active coding sessions | Background work, monitoring, multi-project |
 
 ## Why Oh My Team?
@@ -301,7 +301,7 @@ Oh My Team is a Claude Code plugin with a lightweight channel system. The core i
 
 ## Hub — Remote Multi-Project Management
 
-Control multiple projects from your phone. The hub runs on your machine and connects to Telegram (Discord, Slack coming soon). Each project gets its own topic — zero cross-talk, zero extra token cost.
+Control multiple projects from any device. The hub runs on your machine and connects to Telegram (Discord, Slack coming soon). Each project gets its own topic — zero cross-talk, zero extra token cost.
 
 ```
 Telegram Group: "Oh My Team Hub"
