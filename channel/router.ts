@@ -19,7 +19,6 @@
 import type {
   ChannelAdapter,
   InboundMessage,
-  AdapterConfig,
 } from "./adapters/types";
 
 // ── Configuration ──────────────────────────────────────────────────────────
@@ -111,6 +110,7 @@ async function loadAdapter(platform: string): Promise<ChannelAdapter> {
 // ── State ──────────────────────────────────────────────────────────────────
 
 let registry = loadRegistry();
+const pendingRegistrations = new Set<string>();
 const config = loadConfig();
 const adapter = await loadAdapter(config.platform);
 
@@ -228,18 +228,22 @@ Bun.serve({
         );
       }
 
-      if (registry.sessions[name]) {
+      if (registry.sessions[name] || pendingRegistrations.has(name)) {
         return Response.json(
-          { error: `session "${name}" already exists` },
+          { error: `session "${name}" already exists or is being created` },
           { status: 409 }
         );
       }
+
+      // Lock this name to prevent race conditions
+      pendingRegistrations.add(name);
 
       // Create a thread in the adapter for this session
       let threadInfo;
       try {
         threadInfo = await adapter.createThread(name);
       } catch (err) {
+        pendingRegistrations.delete(name);
         const message = err instanceof Error ? err.message : String(err);
         return Response.json(
           { error: `failed to create thread: ${message}` },
@@ -258,6 +262,7 @@ Bun.serve({
 
       registry.sessions[name] = entry;
       saveRegistry(registry);
+      pendingRegistrations.delete(name);
 
       process.stderr.write(
         `omt-router: Registered session "${name}" → port ${bridgePort}, thread ${threadInfo.threadId}\n`

@@ -217,7 +217,7 @@ Bun.serve({
         };
 
         await mcp.notification({
-          method: "notifications/claude/channel/permission" as any,
+          method: "notifications/claude/channel/permission",
           params: {
             request_id: requestId,
             behavior: allow ? "allow" : "deny",

@@ -251,9 +251,10 @@ export class TelegramAdapter implements ChannelAdapter {
       await this.sleep(5000);
     }
 
-    // Schedule next poll
+    // Schedule next poll — getUpdates with timeout=30 already blocks for 30s
+    // when there are no updates (Telegram long-polling), so no delay needed here
     if (this.polling) {
-      this.pollTimer = setTimeout(() => this.poll(), 100);
+      this.pollTimer = setTimeout(() => this.poll(), 0);
     }
   }
 
