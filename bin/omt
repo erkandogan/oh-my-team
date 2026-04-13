@@ -266,11 +266,17 @@ hub_start() {
         # Reset next bridge port to start after hub's port
         echo "8802" > "$NEXT_BRIDGE_PORT_FILE"
 
-        # Ensure omt-bridge MCP server is configured in user's home .mcp.json
-        # (Claude Code needs this to find the bridge when running from ~/)
-        local HOME_MCP="$HOME/.mcp.json"
-        if [ ! -f "$HOME_MCP" ] || ! grep -q "omt-bridge" "$HOME_MCP" 2>/dev/null; then
-            python3 -c "
+        # Ensure omt-bridge MCP server is registered in BOTH locations
+        # Plugin .mcp.json: read by --plugin-dir
+        # User ~/.mcp.json: read by --dangerously-load-development-channels
+        local BRIDGE_TS="$PLUGIN_DIR/channel/bridge.ts"
+        local BRIDGE_MCP='{"mcpServers":{"omt-bridge":{"command":"bun","args":["run","'"$BRIDGE_TS"'"]}}}'
+
+        # Write to plugin .mcp.json
+        echo "$BRIDGE_MCP" | python3 -m json.tool > "$PLUGIN_DIR/.mcp.json" 2>/dev/null
+
+        # Write to user-level ~/.mcp.json (merge, don't overwrite other servers)
+        python3 -c "
 import json, os
 path = os.path.expanduser('~/.mcp.json')
 cfg = {}
@@ -280,11 +286,15 @@ if os.path.exists(path):
     except: pass
 cfg.setdefault('mcpServers', {})['omt-bridge'] = {
     'command': 'bun',
-    'args': ['run', '$PLUGIN_DIR/channel/bridge.ts']
+    'args': ['run', '$BRIDGE_TS']
 }
 with open(path, 'w') as f: json.dump(cfg, f, indent=2)
-" 2>/dev/null && echo -e "  ${DIM}Bridge MCP registered in ~/.mcp.json${RESET}"
-        fi
+" 2>/dev/null
+
+        # Also clear any stale agent override from plugin settings
+        echo '{}' > "$PLUGIN_DIR/settings.json"
+
+        echo -e "  ${DIM}Bridge MCP registered. Settings cleared.${RESET}"
 
         echo -e "${YELLOW}The hub session will open in this terminal.${RESET}"
         echo -e "${YELLOW}You may need to accept trust/channel prompts on first run.${RESET}"
