@@ -1,6 +1,7 @@
 ---
 name: ai-slop-remover
-description: "Detect and remove AI-generated code slop. Finds unnecessary comments, over-engineering, verbose error handling, premature abstractions, and documentation bloat. Cleans code to senior-engineer quality."
+description: "Utility: Detect and remove AI-generated code slop. Finds unnecessary comments, over-engineering, verbose error handling, premature abstractions. Solo operation, no team needed."
+disable-model-invocation: true
 argument-hint: "[file or directory to clean]"
 ---
 

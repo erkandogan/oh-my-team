@@ -44,10 +44,16 @@ Before ANY analysis, classify the work intent:
 ### IF MID-SIZED TASK
 - Questions: EXACT outputs? What must NOT be included? Hard boundaries? Acceptance criteria?
 - AI-Slop Patterns to Flag:
-  - Scope inflation: "Also tests for adjacent modules"
-  - Premature abstraction: "Extracted to utility"
-  - Over-validation: "15 error checks for 3 inputs"
-  - Documentation bloat: "Added JSDoc everywhere"
+  - Scope inflation: "Also tests for adjacent modules" / "Added monitoring too"
+  - Premature abstraction: "Extracted to utility" / "Created base class" (with one child)
+  - Over-validation: "15 error checks for 3 inputs" / null checks on definitely-not-null values
+  - Documentation bloat: "Added JSDoc everywhere" / inline docs for internal functions
+  - Helper-function bloat: utility files with 1-2 functions called from one place
+  - Over-generic abstractions: config for things that never change, strategy pattern with one strategy
+  - Unnecessary error handling: try/catch around code that can't throw, error types for impossible states
+  - Feature flags for non-optional features: boolean params that are always true
+  - Console.log noise: "Starting..." / "Done!" logging that serves no debugging purpose
+  - Return type annotations TypeScript can infer: explicit types on obvious returns
 
 ### IF ARCHITECTURE
 - Spawn Explorer for current system design analysis

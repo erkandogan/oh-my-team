@@ -54,6 +54,18 @@ Agent(
 )
 ```
 
-## Step 5: Synthesize
+## Step 5: Synthesize findings
 
-Collect findings. Which hypothesis survived? Apply the minimal fix for the confirmed root cause.
+After all investigators report, resolve conflicts:
+
+1. **Collect all evidence** — confirming AND disconfirming from every investigator
+2. **Identify convergence** — did multiple investigators independently point to the same root cause?
+3. **Resolve contradictions** — if investigator-1 says "it's a race condition" and investigator-2 says "it's a null pointer":
+   - Which has stronger evidence (code paths, stack traces, reproducible steps)?
+   - Can both be true (multi-cause bug)?
+   - Spawn an Oracle teammate to adjudicate if evidence is equally strong
+4. **Rank hypotheses** by surviving evidence: CONFIRMED / LIKELY / DISPROVED
+5. **Apply the minimal fix** for the highest-ranked confirmed hypothesis
+6. **Verify** the fix resolves the original bug before reporting completion
+
+**NEVER apply fixes for multiple hypotheses simultaneously.** Fix one, verify, then address the next if needed.

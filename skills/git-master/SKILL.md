@@ -1,6 +1,7 @@
 ---
 name: git-master
-description: "Atomic commit workflow. Analyzes changes, groups into logical commits, writes clear commit messages. Ensures each commit is self-contained and buildable. Use for committing work."
+description: "Utility: Atomic commit workflow. Analyzes changes, groups into logical commits, writes clear commit messages. Solo operation, no team needed."
+disable-model-invocation: true
 argument-hint: "[optional: commit message override]"
 ---
 

@@ -174,18 +174,25 @@ Oh My Team provides 11 specialized agents, each with a focused role and optimize
 
 ## Skills
 
-Skills are slash commands that trigger specific workflows.
+Skills are slash commands that trigger workflows.
+
+### Team skills (spawn agent teams)
 
 | Skill | Purpose |
 |-------|---------|
-| `/oh-my-team:team` | Force agent team mode with tmux panes |
-| `/oh-my-team:plan` | Strategic planning with Prometheus interview |
-| `/oh-my-team:start-work` | Execute a plan with Atlas orchestration |
-| `/oh-my-team:review-work` | 5-agent parallel review gate |
-| `/oh-my-team:git-master` | Atomic commit workflow |
-| `/oh-my-team:ai-slop-remover` | Detect and remove AI-generated code slop |
-| `/oh-my-team:deep-debug` | Multi-hypothesis parallel debugging |
-| `/oh-my-team:frontend-ui-ux` | Frontend development guidance (auto-loaded) |
+| `/oh-my-team:team` | Spawn an agent team with tmux panes for any task |
+| `/oh-my-team:plan` | Prometheus interview + Metis gap analysis + optional Momus review |
+| `/oh-my-team:start-work` | Atlas reads a plan and orchestrates execution with workers |
+| `/oh-my-team:review-work` | 5-agent parallel review: goals, QA, quality, security, context |
+| `/oh-my-team:deep-debug` | Multi-hypothesis parallel debugging with competing investigators |
+
+### Utility skills (no team, solo operation)
+
+| Skill | Purpose |
+|-------|---------|
+| `/oh-my-team:git-master` | Atomic commit workflow with logical grouping |
+| `/oh-my-team:ai-slop-remover` | Detect and remove AI-generated code patterns |
+| `/oh-my-team:frontend-ui-ux` | Frontend development guidance (auto-loaded for UI work) |
 
 ### Workflow: Plan, Execute, Review
 
@@ -231,12 +238,11 @@ Skills are slash commands that trigger specific workflows.
 |  Layer            Security Auditor (security)    |
 |                                                  |
 +-------------------------------------------------+
-|  Skills    plan | start-work | review-work       |
-|            team | deep-debug | git-master         |
+|  Team       plan | start-work | review-work      |
+|  Skills     team | deep-debug                     |
 +-------------------------------------------------+
-|  Hooks     UserPromptSubmit (auto-team)          |
-|            PostToolUse (verify)                   |
-|            TaskCompleted (check)                  |
+|  Utility    git-master | ai-slop-remover          |
+|  Skills     frontend-ui-ux                        |
 +-------------------------------------------------+
 |  Status    Agent name | Team | Members            |
 |  Line      Context bar | Cost | Rate limits       |
@@ -250,7 +256,7 @@ Oh My Team is a **pure Claude Code plugin** -- 23 Markdown files, zero build ste
 
 - **Agents** (`agents/*.md`) -- System prompts with model and tool configurations
 - **Skills** (`skills/*/SKILL.md`) -- Slash commands that trigger workflows
-- **Hooks** (`hooks/hooks.json`) -- Auto-inject team creation reminders via `UserPromptSubmit`
+- **Hooks** (`hooks/hooks.json`) -- Session lifecycle automation
 - **Agent Teams** -- Claude Code's experimental multi-session coordination
 - **Status Line** -- Custom status bar showing active agents and teams
 
