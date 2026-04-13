@@ -318,26 +318,36 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
         sleep 1
         tmux attach-session -t "omt-hub"
 
-        # After user detaches, check if bridge is running
+        # After user detaches, wait for bridge to be ready (longer timeout — trust prompts take time)
         echo ""
-        echo -e "${DIM}Checking hub bridge...${RESET}"
+        echo -e "${DIM}Waiting for hub bridge to start...${RESET}"
         local retries=0
         while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
-            sleep 0.5
+            sleep 1
             retries=$((retries + 1))
-            if [ $retries -gt 10 ]; then
-                echo -e "${YELLOW}Hub bridge not detected yet. It may still be starting.${RESET}"
-                echo -e "${YELLOW}Check with: omt hub attach${RESET}"
+            if [ $retries -gt 60 ]; then
+                echo -e "${YELLOW}Hub bridge not detected after 60s.${RESET}"
+                echo -e "${YELLOW}Attach and check: omt hub attach${RESET}"
                 break
             fi
+            # Show progress every 5s
+            [ $((retries % 5)) -eq 0 ] && echo -e "  ${DIM}Still waiting... (${retries}s)${RESET}"
         done
 
-        # Register hub as a session for the General topic
+        # Register hub as a session for the General topic (retry until success)
         if curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; then
-            curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
-                -H "Content-Type: application/json" \
-                -d "{\"name\": \"hub\", \"path\": \"$HOME\", \"bridgePort\": $HUB_BRIDGE_PORT, \"isHub\": true}" > /dev/null 2>&1
-            echo -e "${GREEN}Hub registered. Listening on Telegram General topic.${RESET}"
+            local reg_retries=0
+            while [ $reg_retries -lt 5 ]; do
+                local reg_result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"name\": \"hub\", \"path\": \"$HOME\", \"bridgePort\": $HUB_BRIDGE_PORT, \"isHub\": true}")
+                if echo "$reg_result" | grep -q '"threadId"' 2>/dev/null; then
+                    echo -e "${GREEN}Hub registered. Listening on Telegram General topic.${RESET}"
+                    break
+                fi
+                reg_retries=$((reg_retries + 1))
+                sleep 1
+            done
         fi
     fi
 
