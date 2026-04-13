@@ -321,40 +321,54 @@ Telegram Group: "Oh My Team Hub"
 ### Setup (one-time)
 
 ```bash
-# 1. Create a Telegram bot via @BotFather, get the token
-# 2. Create a Telegram group, add bot as admin, enable Topics
-# 3. Get the group chat ID (forward a msg to @userinfobot)
+# Interactive setup — walks you through everything
+omt hub init
 
-# 4. Configure the hub
-omt hub init --telegram --token <BOT_TOKEN> --chat-id <CHAT_ID>
-
-# 5. Start everything
+# Start the hub
 omt hub start
 ```
 
-### Daily usage
+### Usage from Telegram
 
-```bash
-# Add a project session (creates a Telegram topic automatically)
-omt hub add ~/projects/my-app
+Talk to the hub in the **General topic** using natural language:
 
-# List active sessions
-omt hub list
+```
+You: I want to work on the landing page project
+Hub: Found ~/Desktop/projects/ohmyteam.cc — starting session...
+Hub: Done! Switch to the "ohmyteam-cc" topic to talk to it.
 
-# Jump into any session's terminal
-omt hub attach my-app
+You: what's running?
+Hub: 2 active sessions:
+  1. frontend — ~/projects/frontend (3h)
+  2. ohmyteam-cc — ~/Desktop/projects/ohmyteam.cc (5m)
 
-# Stop a session (closes its Telegram topic)
-omt hub remove my-app
-
-# Stop everything
-omt hub stop
+You: stop frontend
+Hub: Stopped.
 ```
 
-From Telegram:
-- **General topic**: "start ~/projects/my-app", "list", "stop backend"
-- **Project topic**: talk directly to that project's Claude session
-- **Permission prompts**: reply `yes <code>` or `no <code>` right in the topic
+In a **project topic**, talk directly to that project's Claude session:
+
+```
+You: fix the login bug and add rate limiting
+Claude: [works on it, replies when done]
+
+You: run the tests
+Claude: All 47 tests passing.
+```
+
+**Permission prompts** appear in the project topic — reply `yes <code>` or `no <code>`.
+
+The hub finds projects by name — no need to type full paths.
+
+### Usage from terminal
+
+```bash
+omt hub add ~/projects/my-app   # add a session manually
+omt hub list                     # list active sessions
+omt hub attach my-app            # jump into a session
+omt hub remove my-app            # stop a session
+omt hub stop                     # stop everything
+```
 
 ### Supported platforms
 
