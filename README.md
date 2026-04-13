@@ -164,7 +164,13 @@ Without `/team`, Claude Code will handle simple tasks directly — which is ofte
 
 ## Agents
 
-Oh My Team provides 11 specialized agents, each with a focused role and optimized system prompt.
+Oh My Team provides 12 specialized agents, each with a focused role and optimized system prompt.
+
+### Hub Layer
+
+| Agent | Role | Model |
+|-------|------|-------|
+| **Hub** | Session manager. Manages multiple project sessions remotely via Telegram/Discord. Never writes code. | Sonnet |
 
 ### Orchestration Layer
 
@@ -281,7 +287,7 @@ Skills are slash commands that trigger workflows.
 
 ### How it works
 
-Oh My Team is a **pure Claude Code plugin** -- 23 Markdown files, zero build step, zero dependencies. It leverages Claude Code's native systems:
+Oh My Team is a Claude Code plugin with a lightweight channel system. The core is pure Markdown (agents + skills), the hub adds a small TypeScript bridge for remote control. It leverages Claude Code's native systems:
 
 - **Agents** (`agents/*.md`) -- 12 specialized agents with model and tool configurations
 - **Skills** (`skills/*/SKILL.md`) -- 8 slash commands that trigger workflows
