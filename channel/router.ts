@@ -215,10 +215,11 @@ Bun.serve({
 
     if (method === "POST" && url.pathname === "/sessions") {
       const body = await req.json();
-      const { name, path, bridgePort } = body as {
+      const { name, path, bridgePort, isHub } = body as {
         name: string;
         path: string;
         bridgePort: number;
+        isHub?: boolean;
       };
 
       if (!name || !path || !bridgePort) {
@@ -238,25 +239,36 @@ Bun.serve({
       // Lock this name to prevent race conditions
       pendingRegistrations.add(name);
 
-      // Create a thread in the adapter for this session
-      let threadInfo;
-      try {
-        threadInfo = await adapter.createThread(name);
-      } catch (err) {
-        pendingRegistrations.delete(name);
-        const message = err instanceof Error ? err.message : String(err);
-        return Response.json(
-          { error: `failed to create thread: ${message}` },
-          { status: 500 }
-        );
+      let threadId: string;
+      let threadDisplayName: string;
+
+      if (isHub) {
+        // Hub session listens on the General topic — no new thread needed
+        threadId = "__general__";
+        threadDisplayName = "General (Hub)";
+      } else {
+        // Create a thread in the adapter for this session
+        let threadInfo;
+        try {
+          threadInfo = await adapter.createThread(name);
+        } catch (err) {
+          pendingRegistrations.delete(name);
+          const message = err instanceof Error ? err.message : String(err);
+          return Response.json(
+            { error: `failed to create thread: ${message}` },
+            { status: 500 }
+          );
+        }
+        threadId = threadInfo.threadId;
+        threadDisplayName = threadInfo.displayName;
       }
 
       const entry: SessionEntry = {
         name,
         path,
         bridgePort,
-        threadId: threadInfo.threadId,
-        threadDisplayName: threadInfo.displayName,
+        threadId,
+        threadDisplayName,
         startedAt: new Date().toISOString(),
       };
 
@@ -265,7 +277,7 @@ Bun.serve({
       pendingRegistrations.delete(name);
 
       process.stderr.write(
-        `omt-router: Registered session "${name}" → port ${bridgePort}, thread ${threadInfo.threadId}\n`
+        `omt-router: Registered session "${name}" → port ${bridgePort}, thread ${threadId}\n`
       );
 
       return Response.json(entry, { status: 201 });

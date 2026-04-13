@@ -77,8 +77,9 @@ require_router() {
 # ── Hub commands ────────────────────────────────────────────────────────
 
 hub_init() {
-    local PLATFORM="" TOKEN="" CHAT_ID="" GUILD_ID=""
+    local PLATFORM="" TOKEN="" CHAT_ID=""
 
+    # Parse flags if provided (non-interactive mode)
     while [ $# -gt 0 ]; do
         case "$1" in
             --telegram)  PLATFORM="telegram"; shift ;;
@@ -86,39 +87,123 @@ hub_init() {
             --slack)     PLATFORM="slack"; shift ;;
             --token)     TOKEN="$2"; shift 2 ;;
             --chat-id)   CHAT_ID="$2"; shift 2 ;;
-            --guild-id)  GUILD_ID="$2"; shift 2 ;;
-            *)
-                # Positional: if no --token, treat as token
-                if [ -z "$TOKEN" ]; then TOKEN="$1"; shift
-                elif [ -z "$CHAT_ID" ]; then CHAT_ID="$1"; shift
-                else echo -e "${RED}Unknown arg: $1${RESET}"; exit 1
-                fi
-                ;;
+            *)           shift ;;
         esac
     done
 
-    if [ -z "$PLATFORM" ]; then
-        echo -e "${RED}Usage: omt hub init --telegram <token> --chat-id <group-chat-id>${RESET}"
-        exit 1
-    fi
-
     mkdir -p "$OMT_DIR"
 
-    case "$PLATFORM" in
-        telegram)
-            if [ -z "$TOKEN" ] || [ -z "$CHAT_ID" ]; then
-                echo -e "${RED}Telegram requires: --token and --chat-id${RESET}"
-                echo ""
-                echo "Steps:"
-                echo "  1. Create a bot via @BotFather on Telegram"
-                echo "  2. Create a group, add the bot, make it admin"
-                echo "  3. Enable Topics in group settings"
-                echo "  4. Get the chat ID (forward a group msg to @userinfobot)"
-                echo ""
-                echo "  omt hub init --telegram --token <BOT_TOKEN> --chat-id <CHAT_ID>"
+    echo ""
+    echo -e "${CYAN}${BOLD}  Oh My Team Hub Setup${RESET}"
+    echo ""
+
+    # Step 1: Choose platform
+    if [ -z "$PLATFORM" ]; then
+        echo -e "  ${BOLD}Step 1:${RESET} Choose your messaging platform"
+        echo ""
+        echo -e "    ${GREEN}1)${RESET} Telegram  ${DIM}(recommended — Forum Topics for per-project threads)${RESET}"
+        echo -e "    ${DIM}2) Discord   (coming soon)${RESET}"
+        echo -e "    ${DIM}3) Slack     (coming soon)${RESET}"
+        echo ""
+        read -p "  Choose [1]: " choice
+        choice=${choice:-1}
+        case "$choice" in
+            1) PLATFORM="telegram" ;;
+            2) echo -e "\n  ${YELLOW}Discord adapter not yet implemented.${RESET}"; exit 1 ;;
+            3) echo -e "\n  ${YELLOW}Slack adapter not yet implemented.${RESET}"; exit 1 ;;
+            *) echo -e "\n  ${RED}Invalid choice.${RESET}"; exit 1 ;;
+        esac
+    fi
+
+    if [ "$PLATFORM" = "telegram" ]; then
+        # Step 2: Bot token
+        if [ -z "$TOKEN" ]; then
+            echo ""
+            echo -e "  ${BOLD}Step 2:${RESET} Create a Telegram bot"
+            echo ""
+            echo -e "    1. Open Telegram and search for ${CYAN}@BotFather${RESET}"
+            echo -e "    2. Send ${CYAN}/newbot${RESET}"
+            echo -e "    3. Give it a name (e.g., \"My Dev Team\")"
+            echo -e "    4. Give it a username (e.g., \"mydevteam_bot\")"
+            echo -e "    5. Copy the token BotFather gives you"
+            echo ""
+            read -p "  Paste your bot token: " TOKEN
+            if [ -z "$TOKEN" ]; then
+                echo -e "  ${RED}Token is required.${RESET}"
                 exit 1
             fi
-            cat > "$CONFIG_PATH" << EOF
+        fi
+
+        # Verify token
+        echo -e "  ${DIM}Verifying bot token...${RESET}"
+        local bot_info=$(curl -s "https://api.telegram.org/bot${TOKEN}/getMe")
+        if echo "$bot_info" | grep -q '"ok":true'; then
+            local bot_name=$(echo "$bot_info" | python3 -c "import json,sys; print(json.load(sys.stdin)['result']['username'])" 2>/dev/null || echo "your bot")
+            echo -e "  ${GREEN}Connected to @${bot_name}${RESET}"
+        else
+            echo -e "  ${RED}Invalid token. Check and try again.${RESET}"
+            exit 1
+        fi
+
+        # Step 3: Create group
+        if [ -z "$CHAT_ID" ]; then
+            echo ""
+            echo -e "  ${BOLD}Step 3:${RESET} Create a Telegram group"
+            echo ""
+            echo -e "    1. Create a new group in Telegram (name it e.g., \"Oh My Team Hub\")"
+            echo -e "    2. Add ${CYAN}@${bot_name}${RESET} to the group"
+            echo -e "    3. Make the bot ${BOLD}admin${RESET} (Group Settings → Administrators → Add)"
+            echo -e "    4. Enable ${BOLD}Topics${RESET} (Group Settings → Topics → ON)"
+            echo -e "    5. Send any message in the group"
+            echo ""
+            read -p "  Done? Press Enter, then I'll detect the chat ID... " _
+
+            echo -e "  ${DIM}Looking for the group...${RESET}"
+            local updates=$(curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates")
+            CHAT_ID=$(echo "$updates" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if data.get('ok') and data.get('result'):
+    for update in reversed(data['result']):
+        msg = update.get('message', {})
+        chat = msg.get('chat', {})
+        if chat.get('type') in ('group', 'supergroup'):
+            print(chat['id'])
+            sys.exit(0)
+print('')
+" 2>/dev/null)
+
+            if [ -z "$CHAT_ID" ]; then
+                echo -e "  ${YELLOW}Couldn't auto-detect. Let me try another way...${RESET}"
+                echo ""
+                echo -e "    Open this URL in your browser:"
+                echo -e "    ${CYAN}https://api.telegram.org/bot${TOKEN}/getUpdates${RESET}"
+                echo ""
+                echo -e "    Look for: ${BOLD}\"chat\":{\"id\":-100XXXXXXXXXX}${RESET}"
+                echo ""
+                read -p "  Paste the chat ID (starts with -100): " CHAT_ID
+                if [ -z "$CHAT_ID" ]; then
+                    echo -e "  ${RED}Chat ID is required.${RESET}"
+                    exit 1
+                fi
+            else
+                echo -e "  ${GREEN}Found group: ${CHAT_ID}${RESET}"
+            fi
+        fi
+
+        # Verify group access
+        echo -e "  ${DIM}Verifying group access...${RESET}"
+        local chat_info=$(curl -s "https://api.telegram.org/bot${TOKEN}/getChat?chat_id=${CHAT_ID}")
+        if echo "$chat_info" | grep -q '"ok":true'; then
+            local group_name=$(echo "$chat_info" | python3 -c "import json,sys; print(json.load(sys.stdin)['result'].get('title','Group'))" 2>/dev/null || echo "Group")
+            echo -e "  ${GREEN}Connected to \"${group_name}\"${RESET}"
+        else
+            echo -e "  ${RED}Cannot access group. Make sure the bot is added and is admin.${RESET}"
+            exit 1
+        fi
+
+        # Save config
+        cat > "$CONFIG_PATH" << EOF
 {
   "platform": "telegram",
   "credentials": {
@@ -127,18 +212,17 @@ hub_init() {
   }
 }
 EOF
-            echo -e "${GREEN}${BOLD}Hub configured for Telegram.${RESET}"
-            echo -e "  Run ${CYAN}omt hub start${RESET} to launch."
-            ;;
-        discord)
-            echo -e "${YELLOW}Discord adapter not yet implemented. Coming soon.${RESET}"
-            exit 1
-            ;;
-        slack)
-            echo -e "${YELLOW}Slack adapter not yet implemented. Coming soon.${RESET}"
-            exit 1
-            ;;
-    esac
+
+        echo ""
+        echo -e "  ${GREEN}${BOLD}Hub configured!${RESET}"
+        echo ""
+        echo -e "  ${DIM}Platform:${RESET} Telegram"
+        echo -e "  ${DIM}Bot:${RESET}      @${bot_name}"
+        echo -e "  ${DIM}Group:${RESET}    ${group_name} (${CHAT_ID})"
+        echo ""
+        echo -e "  Next: ${CYAN}omt hub start${RESET}"
+        echo ""
+    fi
 }
 
 hub_start() {
@@ -172,23 +256,57 @@ hub_start() {
         echo -e "${GREEN}Router ready.${RESET}"
     fi
 
-    # Start the hub Claude session
+    # Start the hub Claude session with a bridge connected to General topic
+    local HUB_BRIDGE_PORT=8801
     if tmux has-session -t "omt-hub" 2>/dev/null; then
         echo -e "${YELLOW}Hub session already running.${RESET}"
     else
-        echo -e "${GREEN}Starting hub session...${RESET}"
+        echo -e "${GREEN}Starting hub session (bridge on port $HUB_BRIDGE_PORT)...${RESET}"
+
+        # Reset next bridge port to start after hub's port
+        echo "8802" > "$NEXT_BRIDGE_PORT_FILE"
+
         tmux new-session -d -s "omt-hub" \
-            "claude --plugin-dir '$PLUGIN_DIR' --agent hub --dangerously-skip-permissions; echo 'Hub stopped. Press any key...'; read -n1"
-        echo -e "${GREEN}Hub session ready.${RESET}"
+            "cd '$HOME' && \
+             BRIDGE_PORT=$HUB_BRIDGE_PORT \
+             ROUTER_URL=http://localhost:$ROUTER_PORT \
+             SESSION_NAME=hub \
+             claude --plugin-dir '$PLUGIN_DIR' \
+               --agent hub \
+               --dangerously-skip-permissions \
+               --dangerously-load-development-channels server:omt-bridge; \
+             echo 'Hub stopped. Press any key...'; read -n1"
+
+        # Wait for hub bridge to be ready
+        local retries=0
+        while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
+            sleep 0.5
+            retries=$((retries + 1))
+            if [ $retries -gt 30 ]; then
+                echo -e "${RED}Hub bridge failed to start. Check: omt hub attach${RESET}"
+                break
+            fi
+        done
+
+        # Register hub as a session for the General topic
+        if curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; then
+            curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
+                -H "Content-Type: application/json" \
+                -d "{\"name\": \"hub\", \"path\": \"$HOME\", \"bridgePort\": $HUB_BRIDGE_PORT, \"isHub\": true}" > /dev/null 2>&1
+            echo -e "${GREEN}Hub session ready. Listening on Telegram General topic.${RESET}"
+        fi
     fi
 
     echo ""
     echo -e "${GREEN}${BOLD}Oh My Team Hub is running.${RESET}"
     echo ""
-    echo -e "  ${DIM}Router:${RESET}  http://localhost:$ROUTER_PORT"
-    echo -e "  ${DIM}Attach:${RESET}  omt hub attach"
+    echo -e "  ${DIM}Router:${RESET}    http://localhost:$ROUTER_PORT"
+    echo -e "  ${DIM}Hub:${RESET}       http://localhost:$HUB_BRIDGE_PORT"
+    echo -e "  ${DIM}Attach:${RESET}    omt hub attach"
+    echo -e "  ${DIM}Telegram:${RESET}  Send a message in the General topic"
     echo ""
-    echo -e "  Add project sessions with: ${CYAN}omt hub add <project-dir>${RESET}"
+    echo -e "  Add projects: ${CYAN}omt hub add <project-dir>${RESET}"
+    echo -e "  From Telegram: send \"start ~/projects/my-app\" in General"
 }
 
 hub_add() {
