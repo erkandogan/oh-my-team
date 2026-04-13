@@ -266,6 +266,32 @@ hub_start() {
         # Reset next bridge port to start after hub's port
         echo "8802" > "$NEXT_BRIDGE_PORT_FILE"
 
+        # Ensure omt-bridge MCP server is configured in user's home .mcp.json
+        # (Claude Code needs this to find the bridge when running from ~/)
+        local HOME_MCP="$HOME/.mcp.json"
+        if [ ! -f "$HOME_MCP" ] || ! grep -q "omt-bridge" "$HOME_MCP" 2>/dev/null; then
+            python3 -c "
+import json, os
+path = os.path.expanduser('~/.mcp.json')
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f: cfg = json.load(f)
+    except: pass
+cfg.setdefault('mcpServers', {})['omt-bridge'] = {
+    'command': 'bun',
+    'args': ['run', '$PLUGIN_DIR/channel/bridge.ts']
+}
+with open(path, 'w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null && echo -e "  ${DIM}Bridge MCP registered in ~/.mcp.json${RESET}"
+        fi
+
+        echo -e "${YELLOW}The hub session will open in this terminal.${RESET}"
+        echo -e "${YELLOW}You may need to accept trust/channel prompts on first run.${RESET}"
+        echo -e "${YELLOW}After it starts, press Ctrl+B then D to detach.${RESET}"
+        echo ""
+        read -p "  Press Enter to start the hub session... " _
+
         tmux new-session -d -s "omt-hub" \
             "cd '$HOME' && \
              BRIDGE_PORT=$HUB_BRIDGE_PORT \
@@ -277,13 +303,21 @@ hub_start() {
                --dangerously-load-development-channels server:omt-bridge; \
              echo 'Hub stopped. Press any key...'; read -n1"
 
-        # Wait for hub bridge to be ready
+        # Attach immediately so user can handle trust/channel prompts
+        echo -e "${GREEN}Attaching to hub session. Accept any prompts, then Ctrl+B, D to detach.${RESET}"
+        sleep 1
+        tmux attach-session -t "omt-hub"
+
+        # After user detaches, check if bridge is running
+        echo ""
+        echo -e "${DIM}Checking hub bridge...${RESET}"
         local retries=0
         while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
             sleep 0.5
             retries=$((retries + 1))
-            if [ $retries -gt 30 ]; then
-                echo -e "${RED}Hub bridge failed to start. Check: omt hub attach${RESET}"
+            if [ $retries -gt 10 ]; then
+                echo -e "${YELLOW}Hub bridge not detected yet. It may still be starting.${RESET}"
+                echo -e "${YELLOW}Check with: omt hub attach${RESET}"
                 break
             fi
         done
@@ -293,7 +327,7 @@ hub_start() {
             curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
                 -H "Content-Type: application/json" \
                 -d "{\"name\": \"hub\", \"path\": \"$HOME\", \"bridgePort\": $HUB_BRIDGE_PORT, \"isHub\": true}" > /dev/null 2>&1
-            echo -e "${GREEN}Hub session ready. Listening on Telegram General topic.${RESET}"
+            echo -e "${GREEN}Hub registered. Listening on Telegram General topic.${RESET}"
         fi
     fi
 
