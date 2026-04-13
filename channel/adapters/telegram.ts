@@ -1,0 +1,348 @@
+/**
+ * Oh My Team — Telegram Adapter
+ *
+ * Implements ChannelAdapter for Telegram using Forum Topics.
+ * Uses raw Telegram Bot API via fetch — no external dependencies.
+ *
+ * Group setup:
+ *   1. Create a group, add the bot, make it admin
+ *   2. Enable Topics (Forum mode) in group settings
+ *   3. Bot creates/closes topics for each project session
+ *   4. General topic → hub session
+ *   5. Named topics → project sessions (via bridges)
+ */
+
+import type {
+  ChannelAdapter,
+  AdapterConfig,
+  InboundMessage,
+  ThreadInfo,
+  PermissionPrompt,
+} from "./types";
+
+// ── Telegram Bot API types (minimal, only what we use) ─────────────────────
+
+interface TgUpdate {
+  update_id: number;
+  message?: TgMessage;
+}
+
+interface TgMessage {
+  message_id: number;
+  message_thread_id?: number;
+  from?: {
+    id: number;
+    first_name: string;
+    last_name?: string;
+    username?: string;
+  };
+  chat: {
+    id: number;
+    type: string;
+  };
+  text?: string;
+  date: number;
+}
+
+interface TgForumTopic {
+  message_thread_id: number;
+  name: string;
+}
+
+// ── Permission response detection ──────────────────────────────────────────
+
+const PERMISSION_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i;
+
+// ── Adapter implementation ─────────────────────────────────────────────────
+
+export class TelegramAdapter implements ChannelAdapter {
+  readonly name = "telegram";
+
+  private token = "";
+  private chatId = "";
+  private apiBase = "";
+  private offset = 0;
+  private polling = false;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private messageCallback:
+    | ((message: InboundMessage) => void)
+    | null = null;
+  private permissionCallback:
+    | ((requestId: string, allow: boolean) => void)
+    | null = null;
+
+  // ── Lifecycle ──────────────────────────────────────────────────────
+
+  async connect(config: AdapterConfig): Promise<void> {
+    this.token = config.credentials.botToken;
+    this.chatId = config.credentials.chatId;
+
+    if (!this.token || !this.chatId) {
+      throw new Error(
+        "Telegram adapter requires credentials.botToken and credentials.chatId"
+      );
+    }
+
+    this.apiBase = `https://api.telegram.org/bot${this.token}`;
+
+    // Verify the bot token and group access
+    const me = await this.api("getMe");
+    if (!me.ok) {
+      throw new Error(`Invalid bot token: ${JSON.stringify(me)}`);
+    }
+
+    const chat = await this.api("getChat", { chat_id: this.chatId });
+    if (!chat.ok) {
+      throw new Error(
+        `Cannot access chat ${this.chatId}: ${JSON.stringify(chat)}`
+      );
+    }
+
+    process.stderr.write(
+      `omt-telegram: Connected as @${me.result.username} in "${chat.result.title}"\n`
+    );
+
+    // Start polling
+    this.polling = true;
+    this.poll();
+  }
+
+  async disconnect(): Promise<void> {
+    this.polling = false;
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  // ── Thread management ──────────────────────────────────────────────
+
+  async createThread(sessionName: string): Promise<ThreadInfo> {
+    const result = await this.api("createForumTopic", {
+      chat_id: this.chatId,
+      name: sessionName,
+      icon_color: 7322096, // Blue-ish
+    });
+
+    if (!result.ok) {
+      throw new Error(
+        `Failed to create topic "${sessionName}": ${JSON.stringify(result)}`
+      );
+    }
+
+    const topic = result.result as TgForumTopic;
+
+    // Send a welcome message in the new topic
+    await this.api("sendMessage", {
+      chat_id: this.chatId,
+      message_thread_id: topic.message_thread_id,
+      text: `Session "${sessionName}" is ready. Messages here go directly to the Claude session working on this project.`,
+    });
+
+    return {
+      threadId: String(topic.message_thread_id),
+      displayName: sessionName,
+    };
+  }
+
+  async closeThread(threadId: string): Promise<void> {
+    // Send a closing message
+    await this.api("sendMessage", {
+      chat_id: this.chatId,
+      message_thread_id: Number(threadId),
+      text: "Session closed.",
+    }).catch(() => {});
+
+    // Close the topic (doesn't delete it, just archives)
+    await this.api("closeForumTopic", {
+      chat_id: this.chatId,
+      message_thread_id: Number(threadId),
+    }).catch(() => {
+      // Topic might already be closed — that's fine
+    });
+  }
+
+  // ── Sending ────────────────────────────────────────────────────────
+
+  async send(threadId: string, text: string): Promise<void> {
+    // Telegram has a 4096 char limit per message — chunk if needed
+    const chunks = this.chunkText(text, 4000);
+
+    for (const chunk of chunks) {
+      const result = await this.api("sendMessage", {
+        chat_id: this.chatId,
+        message_thread_id: Number(threadId),
+        text: chunk,
+        parse_mode: "Markdown",
+      });
+
+      // If Markdown parsing fails, retry without it
+      if (!result.ok && result.description?.includes("parse")) {
+        await this.api("sendMessage", {
+          chat_id: this.chatId,
+          message_thread_id: Number(threadId),
+          text: chunk,
+        });
+      }
+    }
+  }
+
+  async sendPermissionPrompt(
+    threadId: string,
+    prompt: PermissionPrompt
+  ): Promise<void> {
+    const text = [
+      `**Permission Request**`,
+      `Tool: \`${prompt.toolName}\``,
+      `Action: ${prompt.description}`,
+      ``,
+      `Reply \`yes ${prompt.requestId}\` or \`no ${prompt.requestId}\``,
+    ].join("\n");
+
+    await this.api("sendMessage", {
+      chat_id: this.chatId,
+      message_thread_id: Number(threadId),
+      text,
+    });
+  }
+
+  // ── Event registration ─────────────────────────────────────────────
+
+  onMessage(callback: (message: InboundMessage) => void): void {
+    this.messageCallback = callback;
+  }
+
+  onPermissionResponse(
+    callback: (requestId: string, allow: boolean) => void
+  ): void {
+    this.permissionCallback = callback;
+  }
+
+  getHubThreadId(): string | null {
+    // Telegram General topic has no thread_id (messages without thread_id
+    // belong to General). We return null to indicate "no thread_id filter".
+    return null;
+  }
+
+  // ── Polling loop ───────────────────────────────────────────────────
+
+  private async poll(): Promise<void> {
+    if (!this.polling) return;
+
+    try {
+      const result = await this.api("getUpdates", {
+        offset: this.offset,
+        timeout: 30,
+        allowed_updates: JSON.stringify(["message"]),
+      });
+
+      if (result.ok && Array.isArray(result.result)) {
+        for (const update of result.result as TgUpdate[]) {
+          this.offset = update.update_id + 1;
+          this.handleUpdate(update);
+        }
+      }
+    } catch (err) {
+      // Network error — wait before retrying
+      process.stderr.write(
+        `omt-telegram: Poll error: ${err instanceof Error ? err.message : err}\n`
+      );
+      await this.sleep(5000);
+    }
+
+    // Schedule next poll
+    if (this.polling) {
+      this.pollTimer = setTimeout(() => this.poll(), 100);
+    }
+  }
+
+  private handleUpdate(update: TgUpdate): void {
+    const msg = update.message;
+    if (!msg || !msg.text || !msg.from) return;
+
+    // Only handle messages from our configured group
+    if (String(msg.chat.id) !== this.chatId) return;
+
+    const text = msg.text.trim();
+    const threadId = msg.message_thread_id
+      ? String(msg.message_thread_id)
+      : "__general__";
+
+    // Check if this is a permission response
+    const permMatch = PERMISSION_RE.exec(text);
+    if (permMatch && this.permissionCallback) {
+      const allow = permMatch[1].toLowerCase().startsWith("y");
+      const requestId = permMatch[2].toLowerCase();
+      this.permissionCallback(requestId, allow);
+      return;
+    }
+
+    // Regular message — forward to callback
+    if (this.messageCallback) {
+      this.messageCallback({
+        threadId,
+        text,
+        senderId: String(msg.from.id),
+        senderName: [msg.from.first_name, msg.from.last_name]
+          .filter(Boolean)
+          .join(" "),
+        messageId: String(msg.message_id),
+        timestamp: new Date(msg.date * 1000).toISOString(),
+      });
+    }
+  }
+
+  // ── Telegram Bot API helper ────────────────────────────────────────
+
+  private async api(
+    method: string,
+    params?: Record<string, unknown>
+  ): Promise<any> {
+    const url = `${this.apiBase}/${method}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: params ? JSON.stringify(params) : undefined,
+    });
+
+    return response.json();
+  }
+
+  // ── Utilities ──────────────────────────────────────────────────────
+
+  private chunkText(text: string, maxLen: number): string[] {
+    if (text.length <= maxLen) return [text];
+
+    const chunks: string[] = [];
+    let remaining = text;
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxLen) {
+        chunks.push(remaining);
+        break;
+      }
+
+      // Try to break at a newline
+      let breakAt = remaining.lastIndexOf("\n", maxLen);
+      if (breakAt < maxLen * 0.3) {
+        // No good newline break — break at space
+        breakAt = remaining.lastIndexOf(" ", maxLen);
+      }
+      if (breakAt < maxLen * 0.3) {
+        // No good break point — hard cut
+        breakAt = maxLen;
+      }
+
+      chunks.push(remaining.slice(0, breakAt));
+      remaining = remaining.slice(breakAt).trimStart();
+    }
+
+    return chunks;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}

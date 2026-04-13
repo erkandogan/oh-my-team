@@ -13,8 +13,19 @@ Thumbs.db
 *.tmp
 *.log
 
-# Node (shouldn't exist, but just in case)
+# Node/Bun
 node_modules/
+bun.lock
+
+# Channel build artifacts
+channel/dist/
+channel/node_modules/
+
+# Hub state (local, not committed)
+hub-registry.json
+hub-config.json
+.next-bridge-port
+router.log
 
 # Claude Code local state
 .sisyphus/

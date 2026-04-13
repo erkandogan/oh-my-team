@@ -1,17 +1,17 @@
 #!/bin/bash
 # omt — Oh My Team CLI
-# Single entry point for sessions and hub management
+# Single entry point for interactive sessions and hub management
 #
 # Usage:
 #   omt                         Start interactive session (in tmux)
 #   omt -d                      Start with auto-approve (danger mode)
-#   omt hub start <dir>         Start persistent background session
-#   omt hub start <dir> --telegram  Start with Telegram channel
+#   omt hub init --telegram <token> --chat-id <id>  Configure hub
+#   omt hub start               Start router + hub session
+#   omt hub add <dir>           Start a project session with bridge
+#   omt hub remove <name>       Stop a project session
 #   omt hub list                List active sessions
-#   omt hub attach <name>       Attach to a session
-#   omt hub stop <name>         Stop a session
-#   omt hub stop-all            Stop all sessions
 #   omt hub status              Overview
+#   omt hub stop                Stop everything
 
 # Colors
 CYAN='\033[36m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'
@@ -23,95 +23,379 @@ if [ -d "$HOME/.oh-my-team/agents" ]; then
 elif [ -d "$(dirname "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")")/agents" ]; then
     PLUGIN_DIR="$(dirname "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")")"
 else
-    echo "Error: Oh My Team plugin not found."
+    echo -e "${RED}Error: Oh My Team plugin not found.${RESET}"
     echo "Run: npm i -g oh-my-team"
     exit 1
 fi
 
-# ─── Hub commands ───────────────────────────────────────────────
+OMT_DIR="$HOME/.oh-my-team"
+CHANNEL_DIR="$PLUGIN_DIR/channel"
+CONFIG_PATH="$OMT_DIR/hub-config.json"
+ROUTER_PORT="${ROUTER_PORT:-8800}"
+NEXT_BRIDGE_PORT_FILE="$OMT_DIR/.next-bridge-port"
 
-hub_session_name() { basename "$1" | tr './ ' '-'; }
+# ── Utility functions ───────────────────────────────────────────────────
 
-hub_start() {
-    local PROJECT_DIR="$1"; shift
-    [ -z "$PROJECT_DIR" ] && echo -e "${RED}Usage: omt hub start <project-dir> [--telegram|--discord|--imessage]${RESET}" && exit 1
+session_name_from_path() {
+    basename "$1" | tr './ ' '-'
+}
 
-    PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || { echo -e "${RED}Directory not found${RESET}"; exit 1; }
-    local NAME=$(hub_session_name "$PROJECT_DIR")
+next_bridge_port() {
+    if [ -f "$NEXT_BRIDGE_PORT_FILE" ]; then
+        local port=$(cat "$NEXT_BRIDGE_PORT_FILE")
+        echo $((port + 1)) > "$NEXT_BRIDGE_PORT_FILE"
+        echo "$port"
+    else
+        mkdir -p "$OMT_DIR"
+        echo "8802" > "$NEXT_BRIDGE_PORT_FILE"
+        echo "8801"
+    fi
+}
 
-    tmux has-session -t "omt-$NAME" 2>/dev/null && { echo -e "${YELLOW}Already running. Use: omt hub attach $NAME${RESET}"; return 1; }
+require_bun() {
+    if ! command -v bun &>/dev/null; then
+        echo -e "${RED}Error: Bun is required for hub features.${RESET}"
+        echo "Install: curl -fsSL https://bun.sh/install | bash"
+        exit 1
+    fi
+}
 
-    local CMD="cd '$PROJECT_DIR' && claude --plugin-dir '$PLUGIN_DIR' --dangerously-skip-permissions"
-    for arg in "$@"; do
-        case "$arg" in
-            --telegram) CMD="$CMD --channels plugin:telegram@claude-plugins-official" ;;
-            --discord)  CMD="$CMD --channels plugin:discord@claude-plugins-official" ;;
-            --imessage) CMD="$CMD --channels plugin:imessage@claude-plugins-official" ;;
+require_config() {
+    if [ ! -f "$CONFIG_PATH" ]; then
+        echo -e "${RED}Hub not configured. Run: omt hub init --telegram <token> --chat-id <id>${RESET}"
+        exit 1
+    fi
+}
+
+require_router() {
+    if ! curl -s "http://localhost:$ROUTER_PORT/health" > /dev/null 2>&1; then
+        echo -e "${RED}Router not running. Run: omt hub start${RESET}"
+        exit 1
+    fi
+}
+
+# ── Hub commands ────────────────────────────────────────────────────────
+
+hub_init() {
+    local PLATFORM="" TOKEN="" CHAT_ID="" GUILD_ID=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --telegram)  PLATFORM="telegram"; shift ;;
+            --discord)   PLATFORM="discord"; shift ;;
+            --slack)     PLATFORM="slack"; shift ;;
+            --token)     TOKEN="$2"; shift 2 ;;
+            --chat-id)   CHAT_ID="$2"; shift 2 ;;
+            --guild-id)  GUILD_ID="$2"; shift 2 ;;
+            *)
+                # Positional: if no --token, treat as token
+                if [ -z "$TOKEN" ]; then TOKEN="$1"; shift
+                elif [ -z "$CHAT_ID" ]; then CHAT_ID="$1"; shift
+                else echo -e "${RED}Unknown arg: $1${RESET}"; exit 1
+                fi
+                ;;
         esac
     done
 
-    tmux new-session -d -s "omt-$NAME" "$CMD; echo 'Session ended. Press any key...'; read -n1"
-    echo -e "${GREEN}${BOLD}Started:${RESET} omt-$NAME"
+    if [ -z "$PLATFORM" ]; then
+        echo -e "${RED}Usage: omt hub init --telegram <token> --chat-id <group-chat-id>${RESET}"
+        exit 1
+    fi
+
+    mkdir -p "$OMT_DIR"
+
+    case "$PLATFORM" in
+        telegram)
+            if [ -z "$TOKEN" ] || [ -z "$CHAT_ID" ]; then
+                echo -e "${RED}Telegram requires: --token and --chat-id${RESET}"
+                echo ""
+                echo "Steps:"
+                echo "  1. Create a bot via @BotFather on Telegram"
+                echo "  2. Create a group, add the bot, make it admin"
+                echo "  3. Enable Topics in group settings"
+                echo "  4. Get the chat ID (forward a group msg to @userinfobot)"
+                echo ""
+                echo "  omt hub init --telegram --token <BOT_TOKEN> --chat-id <CHAT_ID>"
+                exit 1
+            fi
+            cat > "$CONFIG_PATH" << EOF
+{
+  "platform": "telegram",
+  "credentials": {
+    "botToken": "$TOKEN",
+    "chatId": "$CHAT_ID"
+  }
+}
+EOF
+            echo -e "${GREEN}${BOLD}Hub configured for Telegram.${RESET}"
+            echo -e "  Run ${CYAN}omt hub start${RESET} to launch."
+            ;;
+        discord)
+            echo -e "${YELLOW}Discord adapter not yet implemented. Coming soon.${RESET}"
+            exit 1
+            ;;
+        slack)
+            echo -e "${YELLOW}Slack adapter not yet implemented. Coming soon.${RESET}"
+            exit 1
+            ;;
+    esac
+}
+
+hub_start() {
+    require_bun
+    require_config
+
+    # Install channel deps if needed
+    if [ ! -d "$CHANNEL_DIR/node_modules" ]; then
+        echo -e "${YELLOW}Installing channel dependencies...${RESET}"
+        (cd "$CHANNEL_DIR" && bun install --no-summary 2>&1)
+    fi
+
+    # Start the router
+    if tmux has-session -t "omt-router" 2>/dev/null; then
+        echo -e "${YELLOW}Router already running.${RESET}"
+    else
+        echo -e "${GREEN}Starting router on port $ROUTER_PORT...${RESET}"
+        tmux new-session -d -s "omt-router" \
+            "cd '$CHANNEL_DIR' && OMT_HUB_DIR='$OMT_DIR' ROUTER_PORT=$ROUTER_PORT bun run router.ts 2>&1 | tee '$OMT_DIR/router.log'; echo 'Router stopped. Press any key...'; read -n1"
+
+        # Wait for router to be ready
+        local retries=0
+        while ! curl -s "http://localhost:$ROUTER_PORT/health" > /dev/null 2>&1; do
+            sleep 0.5
+            retries=$((retries + 1))
+            if [ $retries -gt 20 ]; then
+                echo -e "${RED}Router failed to start. Check: omt hub logs${RESET}"
+                exit 1
+            fi
+        done
+        echo -e "${GREEN}Router ready.${RESET}"
+    fi
+
+    # Start the hub Claude session
+    if tmux has-session -t "omt-hub" 2>/dev/null; then
+        echo -e "${YELLOW}Hub session already running.${RESET}"
+    else
+        echo -e "${GREEN}Starting hub session...${RESET}"
+        tmux new-session -d -s "omt-hub" \
+            "claude --plugin-dir '$PLUGIN_DIR' --agent hub --dangerously-skip-permissions; echo 'Hub stopped. Press any key...'; read -n1"
+        echo -e "${GREEN}Hub session ready.${RESET}"
+    fi
+
+    echo ""
+    echo -e "${GREEN}${BOLD}Oh My Team Hub is running.${RESET}"
+    echo ""
+    echo -e "  ${DIM}Router:${RESET}  http://localhost:$ROUTER_PORT"
+    echo -e "  ${DIM}Attach:${RESET}  omt hub attach"
+    echo ""
+    echo -e "  Add project sessions with: ${CYAN}omt hub add <project-dir>${RESET}"
+}
+
+hub_add() {
+    local PROJECT_DIR="$1"
+    shift 2>/dev/null
+
+    if [ -z "$PROJECT_DIR" ]; then
+        echo -e "${RED}Usage: omt hub add <project-directory>${RESET}"
+        exit 1
+    fi
+
+    require_router
+
+    # Resolve to absolute path
+    PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || {
+        echo -e "${RED}Directory not found: $1${RESET}"
+        exit 1
+    }
+
+    local NAME=$(session_name_from_path "$PROJECT_DIR")
+    local PORT=$(next_bridge_port)
+
+    # Check if already registered
+    local existing=$(curl -s "http://localhost:$ROUTER_PORT/sessions/$NAME" 2>/dev/null)
+    if echo "$existing" | grep -q '"name"' 2>/dev/null; then
+        echo -e "${YELLOW}Session '$NAME' already exists.${RESET}"
+        return 1
+    fi
+
+    # Start Claude session with bridge in tmux
+    echo -e "${GREEN}Starting session '$NAME' (port $PORT)...${RESET}"
+
+    tmux new-session -d -s "omt-$NAME" \
+        "cd '$PROJECT_DIR' && \
+         BRIDGE_PORT=$PORT \
+         ROUTER_URL=http://localhost:$ROUTER_PORT \
+         SESSION_NAME=$NAME \
+         claude --plugin-dir '$PLUGIN_DIR' \
+           --dangerously-skip-permissions \
+           --dangerously-load-development-channels server:omt-bridge; \
+         echo 'Session ended. Press any key...'; read -n1"
+
+    # Wait for bridge to be ready
+    local retries=0
+    while ! curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; do
+        sleep 0.5
+        retries=$((retries + 1))
+        if [ $retries -gt 30 ]; then
+            echo -e "${RED}Bridge failed to start for '$NAME'. Check: tmux a -t omt-$NAME${RESET}"
+            return 1
+        fi
+    done
+
+    # Register with router (creates the Telegram topic)
+    local result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\": \"$NAME\", \"path\": \"$PROJECT_DIR\", \"bridgePort\": $PORT}")
+
+    if echo "$result" | grep -q '"error"' 2>/dev/null; then
+        echo -e "${RED}Registration failed: $(echo "$result" | grep -o '"error":"[^"]*"')${RESET}"
+        return 1
+    fi
+
+    echo -e "${GREEN}${BOLD}Session '$NAME' started.${RESET}"
     echo -e "  ${DIM}Project:${RESET} $PROJECT_DIR"
+    echo -e "  ${DIM}Bridge:${RESET}  http://localhost:$PORT"
     echo -e "  ${DIM}Attach:${RESET}  omt hub attach $NAME"
+    echo -e "  ${DIM}Talk to it in its Telegram topic.${RESET}"
+}
+
+hub_remove() {
+    local NAME="$1"
+    if [ -z "$NAME" ]; then
+        echo -e "${RED}Usage: omt hub remove <session-name>${RESET}"
+        exit 1
+    fi
+
+    require_router
+
+    # Unregister from router (closes Telegram topic)
+    curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$NAME" > /dev/null 2>&1
+
+    # Kill tmux session
+    if tmux has-session -t "omt-$NAME" 2>/dev/null; then
+        tmux kill-session -t "omt-$NAME"
+    fi
+
+    echo -e "${GREEN}Stopped: $NAME${RESET}"
 }
 
 hub_list() {
-    local SESSIONS=$(tmux list-sessions 2>/dev/null | grep "^omt-" | cut -d: -f1)
-    [ -z "$SESSIONS" ] && { echo -e "${DIM}No active sessions. Start one with: omt hub start <dir>${RESET}"; return; }
+    require_router
+
+    local sessions=$(curl -s "http://localhost:$ROUTER_PORT/sessions" 2>/dev/null)
+
+    if [ -z "$sessions" ] || [ "$sessions" = "{}" ]; then
+        echo -e "${DIM}No active sessions. Add one with: omt hub add <dir>${RESET}"
+        return
+    fi
 
     echo -e "${BOLD}Active sessions:${RESET}"
     echo ""
-    while IFS= read -r session; do
-        local NAME="${session#omt-}"
-        local CWD=$(tmux display-message -t "$session" -p '#{pane_current_path}' 2>/dev/null)
-        local WINDOWS=$(tmux display-message -t "$session" -p '#{session_windows}' 2>/dev/null)
-        echo -e "  ${GREEN}${BOLD}$NAME${RESET}  ${DIM}($CWD)${RESET}  ${DIM}${WINDOWS} windows${RESET}"
-    done <<< "$SESSIONS"
-    echo ""
-}
-
-hub_attach() {
-    local NAME="$1"
-    [ -z "$NAME" ] && { echo -e "${RED}Usage: omt hub attach <name>${RESET}"; hub_list; exit 1; }
-    tmux has-session -t "omt-$NAME" 2>/dev/null || { echo -e "${RED}Session omt-$NAME not found${RESET}"; hub_list; exit 1; }
-    tmux attach-session -t "omt-$NAME"
-}
-
-hub_stop() {
-    local NAME="$1"
-    [ -z "$NAME" ] && { echo -e "${RED}Usage: omt hub stop <name>${RESET}"; exit 1; }
-    tmux has-session -t "omt-$NAME" 2>/dev/null && { tmux kill-session -t "omt-$NAME"; echo -e "${GREEN}Stopped: $NAME${RESET}"; } || echo -e "${YELLOW}Not found: $NAME${RESET}"
-}
-
-hub_stop_all() {
-    local SESSIONS=$(tmux list-sessions 2>/dev/null | grep "^omt-" | cut -d: -f1)
-    [ -z "$SESSIONS" ] && { echo -e "${DIM}No active sessions${RESET}"; return; }
-    while IFS= read -r s; do tmux kill-session -t "$s"; echo -e "${GREEN}Stopped: ${s#omt-}${RESET}"; done <<< "$SESSIONS"
+    echo "$sessions" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for name, info in data.items():
+    print(f'  \033[32m\033[1m{name}\033[0m')
+    print(f'    Path:   {info[\"path\"]}')
+    print(f'    Bridge: http://localhost:{info[\"bridgePort\"]}')
+    print(f'    Thread: {info[\"threadId\"]}')
+    print(f'    Since:  {info[\"startedAt\"]}')
+    print()
+" 2>/dev/null || echo "$sessions" | python3 -m json.tool
 }
 
 hub_status() {
-    local COUNT=$(tmux list-sessions 2>/dev/null | grep -c "^omt-" || echo "0")
     echo -e "${BOLD}Oh My Team Hub${RESET}"
-    echo -e "  Sessions: ${GREEN}$COUNT active${RESET}"
-    echo -e "  Plugin:   $PLUGIN_DIR"
     echo ""
-    [ "$COUNT" -gt 0 ] && hub_list
+
+    # Router status
+    local health=$(curl -s "http://localhost:$ROUTER_PORT/health" 2>/dev/null)
+    if [ -n "$health" ]; then
+        local platform=$(echo "$health" | python3 -c "import json,sys; print(json.load(sys.stdin).get('platform','?'))" 2>/dev/null)
+        local count=$(echo "$health" | python3 -c "import json,sys; print(json.load(sys.stdin).get('sessions',0))" 2>/dev/null)
+        echo -e "  Router:   ${GREEN}running${RESET} (${platform}, ${count} sessions)"
+    else
+        echo -e "  Router:   ${RED}stopped${RESET}"
+    fi
+
+    # Hub session status
+    if tmux has-session -t "omt-hub" 2>/dev/null; then
+        echo -e "  Hub:      ${GREEN}running${RESET}"
+    else
+        echo -e "  Hub:      ${RED}stopped${RESET}"
+    fi
+
+    echo ""
+    hub_list 2>/dev/null
+}
+
+hub_attach() {
+    local NAME="${1:-hub}"
+    if [ "$NAME" = "hub" ]; then
+        tmux has-session -t "omt-hub" 2>/dev/null || { echo -e "${RED}Hub not running.${RESET}"; exit 1; }
+        tmux attach-session -t "omt-hub"
+    elif [ "$NAME" = "router" ]; then
+        tmux has-session -t "omt-router" 2>/dev/null || { echo -e "${RED}Router not running.${RESET}"; exit 1; }
+        tmux attach-session -t "omt-router"
+    else
+        tmux has-session -t "omt-$NAME" 2>/dev/null || { echo -e "${RED}Session '$NAME' not found.${RESET}"; hub_list; exit 1; }
+        tmux attach-session -t "omt-$NAME"
+    fi
+}
+
+hub_stop() {
+    echo -e "${YELLOW}Stopping all sessions...${RESET}"
+
+    # Stop all project sessions
+    local sessions=$(tmux list-sessions 2>/dev/null | grep "^omt-" | grep -v "omt-hub" | grep -v "omt-router" | cut -d: -f1)
+    if [ -n "$sessions" ]; then
+        while IFS= read -r s; do
+            local name="${s#omt-}"
+            curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$name" > /dev/null 2>&1
+            tmux kill-session -t "$s" 2>/dev/null
+            echo -e "  ${GREEN}Stopped: ${s#omt-}${RESET}"
+        done <<< "$sessions"
+    fi
+
+    # Stop hub
+    if tmux has-session -t "omt-hub" 2>/dev/null; then
+        tmux kill-session -t "omt-hub"
+        echo -e "  ${GREEN}Stopped: hub${RESET}"
+    fi
+
+    # Stop router
+    if tmux has-session -t "omt-router" 2>/dev/null; then
+        tmux kill-session -t "omt-router"
+        echo -e "  ${GREEN}Stopped: router${RESET}"
+    fi
+
+    echo -e "${GREEN}${BOLD}Hub shut down.${RESET}"
+}
+
+hub_logs() {
+    if [ -f "$OMT_DIR/router.log" ]; then
+        tail -50 "$OMT_DIR/router.log"
+    else
+        echo -e "${DIM}No logs found.${RESET}"
+    fi
 }
 
 hub_cmd() {
     case "${1:-status}" in
-        start)    shift; hub_start "$@" ;;
-        list|ls)  hub_list ;;
-        attach|a) shift; hub_attach "$@" ;;
-        stop)     shift; hub_stop "$@" ;;
-        stop-all) hub_stop_all ;;
-        status)   hub_status ;;
-        *)        echo -e "${RED}Unknown hub command: $1${RESET}"; echo "Run: omt hub help"; exit 1 ;;
+        init)       shift; hub_init "$@" ;;
+        start)      hub_start ;;
+        add)        shift; hub_add "$@" ;;
+        remove|rm)  shift; hub_remove "$@" ;;
+        list|ls)    hub_list ;;
+        status)     hub_status ;;
+        attach|a)   shift; hub_attach "$@" ;;
+        stop)       hub_stop ;;
+        logs)       hub_logs ;;
+        *)          echo -e "${RED}Unknown hub command: $1${RESET}"; echo "Run: omt help"; exit 1 ;;
     esac
 }
 
-# ─── Main router ───────────────────────────────────────────────
+# ── Main router ─────────────────────────────────────────────────────────
 
 if [ "$1" = "hub" ]; then
     shift
@@ -127,18 +411,20 @@ if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  omt -d                           Start with auto-approve"
     echo "  omt -c                           Continue last session"
     echo ""
-    echo "Hub (persistent sessions):"
-    echo "  omt hub start <dir>              Start background session"
-    echo "  omt hub start <dir> --telegram   Start with Telegram channel"
+    echo "Hub (remote multi-project management):"
+    echo "  omt hub init --telegram <token> --chat-id <id>  Configure"
+    echo "  omt hub start                    Start router + hub session"
+    echo "  omt hub add <dir>                Add a project session"
+    echo "  omt hub remove <name>            Stop a project session"
     echo "  omt hub list                     List active sessions"
-    echo "  omt hub attach <name>            Attach to a session"
-    echo "  omt hub stop <name>              Stop a session"
-    echo "  omt hub stop-all                 Stop all sessions"
     echo "  omt hub status                   Overview"
+    echo "  omt hub attach [name]            Attach to hub or session"
+    echo "  omt hub stop                     Stop everything"
+    echo "  omt hub logs                     View router logs"
     exit 0
 fi
 
-# ─── Interactive session ──────────────────────────────────────
+# ── Interactive session ─────────────────────────────────────────────────
 
 # Expand shortcuts
 ARGS=()
