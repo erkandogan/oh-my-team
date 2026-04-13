@@ -390,7 +390,29 @@ hub_add() {
         return 1
     fi
 
+    # Ensure bridge MCP is registered for this project too
+    local BRIDGE_TS="$PLUGIN_DIR/channel/bridge.ts"
+    local PROJECT_MCP="$PROJECT_DIR/.mcp.json"
+    if [ ! -f "$PROJECT_MCP" ] || ! grep -q "omt-bridge" "$PROJECT_MCP" 2>/dev/null; then
+        python3 -c "
+import json, os
+path = '$PROJECT_MCP'
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f: cfg = json.load(f)
+    except: pass
+cfg.setdefault('mcpServers', {})['omt-bridge'] = {
+    'command': 'bun',
+    'args': ['run', '$BRIDGE_TS']
+}
+with open(path, 'w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+    fi
+
     # Start Claude session with bridge in tmux
+    # Auto-accept prompts: pipe Enter keystrokes after a delay to handle
+    # the workspace trust and development channel warning dialogs
     echo -e "${GREEN}Starting session '$NAME' (port $PORT)...${RESET}"
 
     tmux new-session -d -s "omt-$NAME" \
@@ -403,15 +425,25 @@ hub_add() {
            --dangerously-load-development-channels server:omt-bridge; \
          echo 'Session ended. Press any key...'; read -n1"
 
-    # Wait for bridge to be ready
+    # Auto-accept the interactive prompts (trust + channel warning)
+    sleep 2
+    tmux send-keys -t "omt-$NAME" Enter 2>/dev/null
+    sleep 1
+    tmux send-keys -t "omt-$NAME" Enter 2>/dev/null
+    sleep 1
+    tmux send-keys -t "omt-$NAME" Enter 2>/dev/null
+
+    # Wait for bridge to be ready (longer timeout for first-run prompts)
     local retries=0
     while ! curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; do
-        sleep 0.5
+        sleep 1
         retries=$((retries + 1))
-        if [ $retries -gt 30 ]; then
+        if [ $retries -gt 45 ]; then
             echo -e "${RED}Bridge failed to start for '$NAME'. Check: tmux a -t omt-$NAME${RESET}"
             return 1
         fi
+        # Send extra Enter in case prompts are still pending
+        [ $((retries % 5)) -eq 0 ] && tmux send-keys -t "omt-$NAME" Enter 2>/dev/null
     done
 
     # Register with router (creates the Telegram topic)
