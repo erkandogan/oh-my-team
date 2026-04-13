@@ -260,6 +260,75 @@ Oh My Team is a **pure Claude Code plugin** -- 23 Markdown files, zero build ste
 - **Agent Teams** -- Claude Code's experimental multi-session coordination
 - **Status Line** -- Custom status bar showing active agents and teams
 
+## Remote Control (Channels + Hub)
+
+Control your agent teams from your phone. Start persistent sessions, connect Telegram/Discord, and manage multiple projects remotely.
+
+### Always-alive sessions with `omt-hub`
+
+```bash
+# Start a persistent session for a project
+omt-hub start ~/projects/my-app
+
+# Start with Telegram channel — control from your phone
+omt-hub start ~/projects/my-app --telegram
+
+# Manage sessions
+omt-hub list                    # show all active sessions
+omt-hub attach my-app           # jump into a session
+omt-hub stop my-app             # stop a session
+omt-hub status                  # overview
+```
+
+Sessions run in detached tmux — they stay alive when you close your terminal. Connect a channel to control them remotely.
+
+### Supported channels
+
+| Channel | Flag | Setup |
+|---------|------|-------|
+| Telegram | `--telegram` | Create bot via @BotFather, configure token |
+| Discord | `--discord` | Create bot in Developer Portal, invite to server |
+| iMessage | `--imessage` | macOS only, text yourself to start |
+
+### Multi-project workflow
+
+```bash
+# Start sessions for different projects
+omt-hub start ~/projects/frontend --telegram
+omt-hub start ~/projects/backend --telegram
+omt-hub start ~/projects/mobile
+
+# Check what's running
+omt-hub status
+
+# Jump into any session
+omt-hub attach frontend
+```
+
+Each session is independent — different project, different agent teams, different context. Telegram messages arrive in whichever session has the channel connected.
+
+### Channel setup (Telegram example)
+
+```bash
+# 1. Start session with Telegram
+omt-hub start ~/projects/my-app --telegram
+
+# 2. Attach to configure
+omt-hub attach my-app
+
+# 3. Inside the session, configure your bot token
+/telegram:configure <your-bot-token>
+
+# 4. Text your bot on Telegram — pair when prompted
+/telegram:access pair <code>
+/telegram:access policy allowlist
+
+# 5. Detach (Ctrl+B, D) — session stays alive
+# Now message your bot from your phone to control the session
+```
+
+> **Note**: Channels require Claude Code v2.1.80+ and are in research preview. They require claude.ai login (not API keys).
+
 ## Status Line
 
 Oh My Team installs a custom status line at the bottom of Claude Code:

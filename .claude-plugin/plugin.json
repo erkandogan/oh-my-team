@@ -1,7 +1,7 @@
 {
   "name": "oh-my-team",
   "description": "Multi-agent orchestration plugin for Claude Code. Transforms your session into a coordinated development team with specialized agents — planning, architecture, code review, security audit, and parallel execution.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": {
     "name": "erkan"
   },
