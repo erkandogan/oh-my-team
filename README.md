@@ -89,11 +89,13 @@ The installer:
 
 ### Requirements
 
-- [Claude Code](https://claude.com/code) v2.1.32+
-- [tmux](https://github.com/tmux/tmux/wiki) (for split-pane teammate view)
+- [Claude Code](https://claude.com/code) v2.1.80+
+- [tmux](https://github.com/tmux/tmux/wiki) (for split-pane view and persistent sessions)
+- [Bun](https://bun.sh) (for hub/channel features only)
 
 ```bash
 brew install tmux  # macOS
+curl -fsSL https://bun.sh/install | bash  # Bun (optional, for hub)
 ```
 
 ### Uninstall
@@ -223,19 +225,23 @@ Skills are slash commands that trigger workflows.
 |              Oh My Team Plugin                   |
 +-------------------------------------------------+
 |                                                  |
-|  Orchestration    Sisyphus (lead)                |
-|  Layer            Atlas (conductor)              |
+|  Hub            Hub agent (session manager)      |
+|  Layer          Router + Bridge + Adapters       |
+|                 Telegram | Discord | Slack        |
 |                                                  |
-|  Planning         Prometheus -> Metis ->         |
-|  Layer            Momus (review)                 |
+|  Orchestration  Sisyphus (lead)                  |
+|  Layer          Atlas (conductor)                |
 |                                                  |
-|  Worker           Hephaestus (build)             |
-|  Layer            Explorer (search)              |
-|                   Librarian (research)           |
-|                   Oracle (consult)               |
+|  Planning       Prometheus -> Metis ->           |
+|  Layer          Momus (review)                   |
 |                                                  |
-|  Review           Reviewer (quality)             |
-|  Layer            Security Auditor (security)    |
+|  Worker         Hephaestus (build)               |
+|  Layer          Explorer (search)                |
+|                 Librarian (research)             |
+|                 Oracle (consult)                 |
+|                                                  |
+|  Review         Reviewer (quality)               |
+|  Layer          Security Auditor (security)      |
 |                                                  |
 +-------------------------------------------------+
 |  Team       plan | start-work | review-work      |
@@ -254,80 +260,87 @@ Skills are slash commands that trigger workflows.
 
 Oh My Team is a **pure Claude Code plugin** -- 23 Markdown files, zero build step, zero dependencies. It leverages Claude Code's native systems:
 
-- **Agents** (`agents/*.md`) -- System prompts with model and tool configurations
-- **Skills** (`skills/*/SKILL.md`) -- Slash commands that trigger workflows
-- **Hooks** (`hooks/hooks.json`) -- Session lifecycle automation
+- **Agents** (`agents/*.md`) -- 12 specialized agents with model and tool configurations
+- **Skills** (`skills/*/SKILL.md`) -- 8 slash commands that trigger workflows
+- **Channel system** (`channel/`) -- Hub, router, bridge, and platform adapters for remote control
 - **Agent Teams** -- Claude Code's experimental multi-session coordination
 - **Status Line** -- Custom status bar showing active agents and teams
 
-## Remote Control (Channels + Hub)
+## Hub — Remote Multi-Project Management
 
-Control your agent teams from your phone. Start persistent sessions, connect Telegram/Discord, and manage multiple projects remotely.
+Control multiple projects from your phone. The hub runs on your machine and connects to Telegram (Discord, Slack coming soon). Each project gets its own topic — zero cross-talk, zero extra token cost.
 
-### Always-alive sessions with `omt hub`
-
-```bash
-# Start a persistent session for a project
-omt hub start ~/projects/my-app
-
-# Start with Telegram channel — control from your phone
-omt hub start ~/projects/my-app --telegram
-
-# Manage sessions
-omt hub list                    # show all active sessions
-omt hub attach my-app           # jump into a session
-omt hub stop my-app             # stop a session
-omt hub status                  # overview
+```
+Telegram Group: "Oh My Team Hub"
++-- General topic     <-- Hub: manage sessions
++-- Topic: frontend   <-- Bridge: direct to Claude (frontend)
++-- Topic: backend    <-- Bridge: direct to Claude (backend)
++-- Topic: mobile     <-- Bridge: direct to Claude (mobile)
 ```
 
-Sessions run in detached tmux — they stay alive when you close your terminal. Connect a channel to control them remotely.
+### How it works
 
-### Supported channels
+- **Hub session** listens on General topic. Manages sessions via CLI.
+- **Each project** gets its own Telegram topic + bridge (MCP channel server).
+- **You talk in a project's topic** and the bridge forwards directly to that Claude session.
+- **Claude responds** directly in the topic. Hub is never involved — zero extra token cost.
 
-| Channel | Flag | Setup |
-|---------|------|-------|
-| Telegram | `--telegram` | Create bot via @BotFather, configure token |
-| Discord | `--discord` | Create bot in Developer Portal, invite to server |
-| iMessage | `--imessage` | macOS only, text yourself to start |
-
-### Multi-project workflow
+### Setup (one-time)
 
 ```bash
-# Start sessions for different projects
-omt hub start ~/projects/frontend --telegram
-omt hub start ~/projects/backend --telegram
-omt hub start ~/projects/mobile
+# 1. Create a Telegram bot via @BotFather, get the token
+# 2. Create a Telegram group, add bot as admin, enable Topics
+# 3. Get the group chat ID (forward a msg to @userinfobot)
 
-# Check what's running
-omt hub status
+# 4. Configure the hub
+omt hub init --telegram --token <BOT_TOKEN> --chat-id <CHAT_ID>
 
-# Jump into any session
-omt hub attach frontend
+# 5. Start everything
+omt hub start
 ```
 
-Each session is independent — different project, different agent teams, different context. Telegram messages arrive in whichever session has the channel connected.
-
-### Channel setup (Telegram example)
+### Daily usage
 
 ```bash
-# 1. Start session with Telegram
-omt hub start ~/projects/my-app --telegram
+# Add a project session (creates a Telegram topic automatically)
+omt hub add ~/projects/my-app
 
-# 2. Attach to configure
+# List active sessions
+omt hub list
+
+# Jump into any session's terminal
 omt hub attach my-app
 
-# 3. Inside the session, configure your bot token
-/telegram:configure <your-bot-token>
+# Stop a session (closes its Telegram topic)
+omt hub remove my-app
 
-# 4. Text your bot on Telegram — pair when prompted
-/telegram:access pair <code>
-/telegram:access policy allowlist
-
-# 5. Detach (Ctrl+B, D) — session stays alive
-# Now message your bot from your phone to control the session
+# Stop everything
+omt hub stop
 ```
 
-> **Note**: Channels require Claude Code v2.1.80+ and are in research preview. They require claude.ai login (not API keys).
+From Telegram:
+- **General topic**: "start ~/projects/my-app", "list", "stop backend"
+- **Project topic**: talk directly to that project's Claude session
+- **Permission prompts**: reply `yes <code>` or `no <code>` right in the topic
+
+### Supported platforms
+
+| Platform | Status | Thread model |
+|----------|--------|-------------|
+| Telegram | Available | Forum Topics |
+| Discord | Coming soon | Channels or Threads |
+| Slack | Coming soon | Threads |
+| WhatsApp | Planned | -- |
+
+Adding a new platform = one adapter file (~150 lines) implementing the `ChannelAdapter` interface. Bridge and router are platform-agnostic.
+
+### Requirements
+
+- [Bun](https://bun.sh) runtime (for the channel server)
+- Claude Code v2.1.80+ with claude.ai login
+- tmux (for persistent sessions)
+
+> **Note**: Channels are a Claude Code research preview feature. Custom channels require the `--dangerously-load-development-channels` flag.
 
 ## Status Line
 
@@ -346,10 +359,9 @@ Shows: active agent, team name, teammate count, context usage (color-coded), ses
 oh-my-team/
 +-- .claude-plugin/
 |   +-- plugin.json              # Plugin manifest
-+-- settings.json                # Activates Sisyphus as default agent
-+-- CLAUDE.md                    # Project instructions (team creation rules)
-+-- agents/
++-- agents/                      # 12 specialized agents
 |   +-- sisyphus.md              # Team lead / orchestrator
+|   +-- hub.md                   # Session manager (remote control)
 |   +-- prometheus.md            # Strategic planner
 |   +-- atlas.md                 # Plan conductor
 |   +-- oracle.md                # Architecture consultant
@@ -360,19 +372,30 @@ oh-my-team/
 |   +-- security-auditor.md      # Security review
 |   +-- metis.md                 # Gap analyzer
 |   +-- momus.md                 # Plan reviewer
-+-- skills/
++-- skills/                      # 8 slash commands
 |   +-- team/SKILL.md            # Force team mode
 |   +-- plan/SKILL.md            # Planning workflow
 |   +-- start-work/SKILL.md      # Execution workflow
 |   +-- review-work/SKILL.md     # 5-agent review gate
-|   +-- git-master/SKILL.md      # Commit workflow
-|   +-- ai-slop-remover/SKILL.md # Code cleanup
 |   +-- deep-debug/SKILL.md      # Multi-hypothesis debugging
-|   +-- frontend-ui-ux/SKILL.md  # Frontend guidance
-+-- hooks/
-|   +-- hooks.json               # Auto-team injection hook
+|   +-- git-master/SKILL.md      # Commit workflow (utility)
+|   +-- ai-slop-remover/SKILL.md # Code cleanup (utility)
+|   +-- frontend-ui-ux/SKILL.md  # Frontend guidance (auto-loaded)
++-- channel/                     # Hub channel system
+|   +-- bridge.ts                # MCP channel server (per-session)
+|   +-- router.ts                # Session registry + message broker
+|   +-- adapters/
+|   |   +-- types.ts             # ChannelAdapter interface
+|   |   +-- telegram.ts          # Telegram Topics adapter
+|   |   +-- index.ts             # Adapter registry
+|   +-- bridge.mcp.json          # MCP config for bridge
+|   +-- package.json             # Channel dependencies
++-- bin/
+|   +-- omt                      # CLI (sessions + hub management)
++-- hooks/hooks.json             # Session lifecycle hooks
++-- settings.json                # Activates Sisyphus as default
++-- CLAUDE.md                    # Project instructions
 +-- install.sh                   # One-command installer
-+-- README.md
 ```
 
 ## Contributing
@@ -407,6 +430,10 @@ argument-hint: "[arguments]"
 
 Instructions for the skill.
 ```
+
+### Adding a new channel adapter
+
+Create `channel/adapters/your-platform.ts` implementing the `ChannelAdapter` interface from `types.ts`. Register it in `adapters/index.ts` and add a case in `router.ts`. See `telegram.ts` for a complete reference implementation.
 
 ## License
 
