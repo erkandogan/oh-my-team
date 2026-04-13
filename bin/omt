@@ -127,6 +127,11 @@ hub_init() {
             echo -e "    4. Give it a username (e.g., \"mydevteam_bot\")"
             echo -e "    5. Copy the token BotFather gives you"
             echo ""
+            echo -e "    ${YELLOW}Important:${RESET} In BotFather, also do:"
+            echo -e "    6. Send ${CYAN}/mybots${RESET} → select your bot"
+            echo -e "    7. Bot Settings → ${BOLD}Group Privacy → Turn OFF${RESET}"
+            echo -e "       (bot must read all group messages, not just commands)"
+            echo ""
             read -p "  Paste your bot token: " TOKEN
             if [ -z "$TOKEN" ]; then
                 echo -e "  ${RED}Token is required.${RESET}"

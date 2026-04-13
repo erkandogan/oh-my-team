@@ -320,12 +320,25 @@ Telegram Group: "Oh My Team Hub"
 
 ### Setup (one-time)
 
-```bash
-# Interactive setup — walks you through everything
-omt hub init
+**1. Create a Telegram bot:**
+- Open [@BotFather](https://t.me/BotFather) → `/newbot` → choose a name and username
+- Copy the bot token
+- **Important:** In BotFather, go to **Bot Settings → Group Privacy → Turn OFF**. The bot must be able to read all group messages.
 
-# Start the hub
+**2. Create a Telegram group:**
+- Create a new group (e.g., "Oh My Team Hub")
+- Add your bot to the group
+- **Make the bot admin** (Group Settings → Administrators → Add)
+- **Enable Topics** (Group Settings → Topics → ON)
+- Send any message in the group (so the bot can detect the chat ID)
+
+**3. Run the interactive setup:**
+```bash
+omt hub init
+# Walks you through: paste token → auto-detects group → verifies access
+
 omt hub start
+# Starts the router + hub session
 ```
 
 ### Usage from Telegram
