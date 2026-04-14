@@ -599,6 +599,7 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
          ROUTER_URL=http://localhost:$ROUTER_PORT \
          SESSION_NAME=$NAME \
          claude --plugin-dir '$PLUGIN_DIR' \
+           --agent sisyphus \
            --dangerously-skip-permissions \
            --dangerously-load-development-channels server:omt-bridge; \
          echo 'Session ended. Press any key...'; read -n1"
