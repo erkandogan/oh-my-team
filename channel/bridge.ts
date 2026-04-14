@@ -50,7 +50,7 @@ const mcp = new Server(
     },
     instructions: [
       `Messages arrive as <channel source="omt-bridge" session="${SESSION_NAME}" sender="...">`,
-      "These are from the user via a messaging platform (Telegram, Discord, etc.).",
+      "These are from the user via a messaging platform (Telegram, Slack, etc.).",
       "Reply using the reply tool. Keep replies concise — they go to a chat app, not a terminal.",
       "For long code output, summarize and mention the file path instead of pasting full content.",
       "Permission prompts are forwarded to the user automatically.",

@@ -29,7 +29,7 @@
   <img src="https://raw.githubusercontent.com/erkandogan/oh-my-team/main/showcase.gif" alt="Oh My Team in action" width="700">
 </p>
 
-**Oh My Team** gives Claude Code a full development team — 12 specialized agents working in parallel across tmux panes. Plan, build, review, and debug with dedicated specialists instead of one AI doing everything. Run it locally, or deploy the **Hub** for always-alive multi-project sessions you control from Telegram.
+**Oh My Team** gives Claude Code a full development team — 12 specialized agents working in parallel across tmux panes. Plan, build, review, and debug with dedicated specialists instead of one AI doing everything. Run it locally, or deploy the **Hub** for always-alive multi-project sessions you control from Telegram or Slack.
 
 ```
 Telegram Group: "Oh My Team Hub"
@@ -168,13 +168,13 @@ Oh My Team provides 12 specialized agents, each with a focused role and optimize
 
 | Agent | Role | Model |
 |-------|------|-------|
-| **Hub** | Session manager. Manages multiple project sessions remotely via Telegram/Discord. Never writes code. | Sonnet |
+| **Hub** | Session manager. Manages multiple project sessions remotely via Telegram/Slack. Never writes code. | Sonnet |
 
 ### Orchestration Layer
 
 | Agent | Role | Model |
 |-------|------|-------|
-| **Sisyphus** | Team lead. Proposes teams, delegates work, coordinates, verifies results. Never codes directly. | Opus |
+| **Sisyphus** | Team lead. Works directly on simple tasks, auto-escalates to planning/teams/review for complex work. | Opus |
 | **Atlas** | Plan conductor. Reads work plans, delegates to workers in parallel waves, verifies every result. | Sonnet |
 
 ### Planning Layer
@@ -254,7 +254,7 @@ Skills are slash commands that trigger workflows.
 |                                                  |
 |  Hub            Hub agent (session manager)      |
 |  Layer          Router + Bridge + Adapters       |
-|                 Telegram | Discord | Slack        |
+|                 Telegram | Slack                   |
 |                                                  |
 |  Orchestration  Sisyphus (lead)                  |
 |  Layer          Atlas (conductor)                |

@@ -1,6 +1,6 @@
 {
   "name": "oh-my-team",
-  "description": "Multi-agent orchestration for Claude Code. 12 specialized agents working in parallel — planning, building, reviewing, debugging. Plus a Hub for always-alive multi-project sessions controllable from Telegram.",
+  "description": "Multi-agent orchestration for Claude Code. 12 specialized agents working in parallel — planning, building, reviewing, debugging. Plus a Hub for always-alive multi-project sessions controllable from Telegram or Slack.",
   "version": "2.0.0",
   "author": {
     "name": "erkan"
