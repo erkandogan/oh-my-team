@@ -107,6 +107,33 @@ async function loadAdapter(platform: string): Promise<ChannelAdapter> {
   }
 }
 
+// ── Status tracking per session ────────────────────────────────────────────
+
+interface SessionStatus {
+  messageId: string | null;   // platform message ID for the editable status msg
+  lines: string[];            // accumulated status lines
+  typingInterval: ReturnType<typeof setInterval> | null;
+}
+
+const sessionStatus = new Map<string, SessionStatus>();
+
+function getOrCreateStatus(name: string): SessionStatus {
+  let status = sessionStatus.get(name);
+  if (!status) {
+    status = { messageId: null, lines: [], typingInterval: null };
+    sessionStatus.set(name, status);
+  }
+  return status;
+}
+
+function clearSessionStatus(name: string): void {
+  const status = sessionStatus.get(name);
+  if (status) {
+    if (status.typingInterval) clearInterval(status.typingInterval);
+    sessionStatus.delete(name);
+  }
+}
+
 // ── State ──────────────────────────────────────────────────────────────────
 
 let registry = loadRegistry();
@@ -138,6 +165,31 @@ adapter.onMessage((message: InboundMessage) => {
     // Hub session handles its own messages via its own Telegram channel.
     return;
   }
+
+  // Start typing indicator + status message
+  const status = getOrCreateStatus(session.name);
+
+  // Send initial typing indicator
+  if (adapter.sendTypingIndicator) {
+    adapter.sendTypingIndicator(session.threadId).catch(() => {});
+  }
+
+  // Send "Working..." status message
+  if (adapter.sendStatusMessage && !status.messageId) {
+    adapter.sendStatusMessage(session.threadId, "_Working..._")
+      .then((msgId) => {
+        status.messageId = msgId;
+      })
+      .catch(() => {});
+  }
+
+  // Heartbeat: re-send typing indicator every 4 seconds
+  if (status.typingInterval) clearInterval(status.typingInterval);
+  status.typingInterval = setInterval(() => {
+    if (adapter.sendTypingIndicator) {
+      adapter.sendTypingIndicator(session.threadId).catch(() => {});
+    }
+  }, 4000);
 
   // Forward to the correct bridge
   fetch(`http://localhost:${session.bridgePort}/message`, {
@@ -327,6 +379,15 @@ Bun.serve({
         );
       }
 
+      // Clean up status message and typing indicator
+      const status = sessionStatus.get(sessionName);
+      if (status) {
+        if (status.messageId && adapter.deleteStatusMessage) {
+          adapter.deleteStatusMessage(session.threadId, status.messageId).catch(() => {});
+        }
+        clearSessionStatus(sessionName);
+      }
+
       try {
         await adapter.send(session.threadId, text);
         return Response.json({ status: "sent" });
@@ -337,6 +398,41 @@ Bun.serve({
           { status: 500 }
         );
       }
+    }
+
+    // ── Status update from hooks → adapter ──────────────────────────
+
+    if (method === "POST" && url.pathname === "/status") {
+      const body = await req.json();
+      const { sessionName, text: statusText } = body as {
+        sessionName: string;
+        text: string;
+      };
+
+      const session = registry.sessions[sessionName];
+      if (!session) {
+        return Response.json({ status: "ignored" });
+      }
+
+      const status = getOrCreateStatus(sessionName);
+      status.lines.push(statusText);
+
+      // Format the status message: "Working..." + accumulated lines
+      const formatted = "_Working..._\n" + status.lines.map((l) => `  ${l}`).join("\n");
+
+      if (status.messageId && adapter.updateStatusMessage) {
+        // Edit existing status message
+        adapter.updateStatusMessage(session.threadId, status.messageId, formatted).catch(() => {});
+      } else if (adapter.sendStatusMessage) {
+        // First status update — send a new message
+        adapter.sendStatusMessage(session.threadId, formatted)
+          .then((msgId) => {
+            status.messageId = msgId;
+          })
+          .catch(() => {});
+      }
+
+      return Response.json({ status: "updated" });
     }
 
     // ── Permission request from bridge → adapter ─────────────────────

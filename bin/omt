@@ -475,6 +475,7 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
              BRIDGE_PORT=$HUB_BRIDGE_PORT \
              ROUTER_URL=http://localhost:$ROUTER_PORT \
              SESSION_NAME=hub \
+             OMT_PLUGIN_DIR='$PLUGIN_DIR' \
              claude --plugin-dir '$PLUGIN_DIR' \
                --agent hub \
                --dangerously-skip-permissions \
@@ -598,6 +599,7 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
          BRIDGE_PORT=$PORT \
          ROUTER_URL=http://localhost:$ROUTER_PORT \
          SESSION_NAME=$NAME \
+         OMT_PLUGIN_DIR='$PLUGIN_DIR' \
          claude --plugin-dir '$PLUGIN_DIR' \
            --agent sisyphus \
            --dangerously-skip-permissions \

@@ -225,6 +225,48 @@ export class TelegramAdapter implements ChannelAdapter {
     return null;
   }
 
+  // ── Status indicators ─────────────────────────────────────────────
+
+  async sendTypingIndicator(threadId: string): Promise<void> {
+    const params: Record<string, unknown> = {
+      chat_id: this.chatId,
+      action: "typing",
+    };
+    if (threadId !== "__general__") {
+      params.message_thread_id = Number(threadId);
+    }
+    await this.api("sendChatAction", params).catch(() => {});
+  }
+
+  async sendStatusMessage(threadId: string, text: string): Promise<string> {
+    const params: Record<string, unknown> = {
+      chat_id: this.chatId,
+      text,
+      parse_mode: "Markdown",
+    };
+    if (threadId !== "__general__") {
+      params.message_thread_id = Number(threadId);
+    }
+    const result = await this.api("sendMessage", params);
+    return String(result.result?.message_id || "");
+  }
+
+  async updateStatusMessage(_threadId: string, messageId: string, text: string): Promise<void> {
+    await this.api("editMessageText", {
+      chat_id: this.chatId,
+      message_id: Number(messageId),
+      text,
+      parse_mode: "Markdown",
+    }).catch(() => {});
+  }
+
+  async deleteStatusMessage(_threadId: string, messageId: string): Promise<void> {
+    await this.api("deleteMessage", {
+      chat_id: this.chatId,
+      message_id: Number(messageId),
+    }).catch(() => {});
+  }
+
   // ── Polling loop ───────────────────────────────────────────────────
 
   private async poll(): Promise<void> {

@@ -393,6 +393,39 @@ export class SlackAdapter implements ChannelAdapter {
     return null;
   }
 
+  // ── Status indicators ─────────────────────────────────────────────
+
+  async sendTypingIndicator(_threadId: string): Promise<void> {
+    // Slack doesn't support typing indicators for bots — no-op
+  }
+
+  async sendStatusMessage(threadId: string, text: string): Promise<string> {
+    const params: Record<string, unknown> = {
+      channel: this.channelId,
+      text,
+    };
+    if (threadId !== "__general__") {
+      params.thread_ts = threadId;
+    }
+    const result = await this.api("chat.postMessage", params);
+    return result.ts || "";
+  }
+
+  async updateStatusMessage(_threadId: string, messageId: string, text: string): Promise<void> {
+    await this.api("chat.update", {
+      channel: this.channelId,
+      ts: messageId,
+      text,
+    }).catch(() => {});
+  }
+
+  async deleteStatusMessage(_threadId: string, messageId: string): Promise<void> {
+    await this.api("chat.delete", {
+      channel: this.channelId,
+      ts: messageId,
+    }).catch(() => {});
+  }
+
   // ── Slack Web API helper ───────────────────────────────────────────
 
   private async api(

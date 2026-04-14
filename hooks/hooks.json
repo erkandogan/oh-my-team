@@ -10,6 +10,56 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": {
+          "tool_name": "Agent"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "TaskCreate"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "TaskUpdate"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "Skill"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

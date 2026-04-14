@@ -121,4 +121,32 @@ export interface ChannelAdapter {
    * Returns null if hub thread detection is not supported.
    */
   getHubThreadId(): string | null
+
+  // ── Status indicators (optional) ────────────────────────────────────
+
+  /**
+   * Send a typing indicator to a thread.
+   * Telegram: sendChatAction("typing"). Auto-expires after ~5s.
+   * Slack: not natively supported for bots — implementations may no-op.
+   */
+  sendTypingIndicator?(threadId: string): Promise<void>
+
+  /**
+   * Send a status message to a thread. Returns a platform message ID
+   * that can be used with updateStatusMessage/deleteStatusMessage.
+   * Used for progress indicators like "Working... spawned 3 agents".
+   */
+  sendStatusMessage?(threadId: string, text: string): Promise<string>
+
+  /**
+   * Edit an existing status message in-place.
+   * @param messageId - The ID returned by sendStatusMessage
+   */
+  updateStatusMessage?(threadId: string, messageId: string, text: string): Promise<void>
+
+  /**
+   * Delete a status message (cleanup after work is done).
+   * @param messageId - The ID returned by sendStatusMessage
+   */
+  deleteStatusMessage?(threadId: string, messageId: string): Promise<void>
 }
