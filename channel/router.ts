@@ -90,18 +90,18 @@ async function loadAdapter(platform: string): Promise<ChannelAdapter> {
       const { TelegramAdapter } = await import("./adapters/telegram");
       return new TelegramAdapter();
     }
+    case "slack": {
+      const { SlackAdapter } = await import("./adapters/slack");
+      return new SlackAdapter();
+    }
     // Future adapters:
     // case "discord": {
     //   const { DiscordAdapter } = await import("./adapters/discord");
     //   return new DiscordAdapter();
     // }
-    // case "slack": {
-    //   const { SlackAdapter } = await import("./adapters/slack");
-    //   return new SlackAdapter();
-    // }
     default:
       process.stderr.write(
-        `omt-router: Unknown platform "${platform}". Supported: telegram\n`
+        `omt-router: Unknown platform "${platform}". Supported: telegram, slack\n`
       );
       process.exit(1);
   }

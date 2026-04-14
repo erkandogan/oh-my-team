@@ -62,9 +62,13 @@ require_bun() {
 
 require_config() {
     if [ ! -f "$CONFIG_PATH" ]; then
-        echo -e "${RED}Hub not configured. Run: omt hub init --telegram <token> --chat-id <id>${RESET}"
+        echo -e "${RED}Hub not configured. Run: omt hub init${RESET}"
         exit 1
     fi
+}
+
+get_platform() {
+    python3 -c "import json; print(json.load(open('$CONFIG_PATH'))['platform'])" 2>/dev/null || echo "unknown"
 }
 
 require_router() {
@@ -77,17 +81,19 @@ require_router() {
 # ── Hub commands ────────────────────────────────────────────────────────
 
 hub_init() {
-    local PLATFORM="" TOKEN="" CHAT_ID=""
+    local PLATFORM="" TOKEN="" CHAT_ID="" APP_TOKEN=""
 
     # Parse flags if provided (non-interactive mode)
     while [ $# -gt 0 ]; do
         case "$1" in
-            --telegram)  PLATFORM="telegram"; shift ;;
-            --discord)   PLATFORM="discord"; shift ;;
-            --slack)     PLATFORM="slack"; shift ;;
-            --token)     TOKEN="$2"; shift 2 ;;
-            --chat-id)   CHAT_ID="$2"; shift 2 ;;
-            *)           shift ;;
+            --telegram)   PLATFORM="telegram"; shift ;;
+            --discord)    PLATFORM="discord"; shift ;;
+            --slack)      PLATFORM="slack"; shift ;;
+            --token)      TOKEN="$2"; shift 2 ;;
+            --app-token)  APP_TOKEN="$2"; shift 2 ;;
+            --chat-id)    CHAT_ID="$2"; shift 2 ;;
+            --channel-id) CHAT_ID="$2"; shift 2 ;;
+            *)            shift ;;
         esac
     done
 
@@ -101,16 +107,16 @@ hub_init() {
     if [ -z "$PLATFORM" ]; then
         echo -e "  ${BOLD}Step 1:${RESET} Choose your messaging platform"
         echo ""
-        echo -e "    ${GREEN}1)${RESET} Telegram  ${DIM}(recommended — Forum Topics for per-project threads)${RESET}"
-        echo -e "    ${DIM}2) Discord   (coming soon)${RESET}"
-        echo -e "    ${DIM}3) Slack     (coming soon)${RESET}"
+        echo -e "    ${GREEN}1)${RESET} Telegram  ${DIM}(Forum Topics for per-project threads)${RESET}"
+        echo -e "    ${GREEN}2)${RESET} Slack     ${DIM}(threads in a channel via Socket Mode)${RESET}"
+        echo -e "    ${DIM}3) Discord   (coming soon)${RESET}"
         echo ""
         read -p "  Choose [1]: " choice
         choice=${choice:-1}
         case "$choice" in
             1) PLATFORM="telegram" ;;
-            2) echo -e "\n  ${YELLOW}Discord adapter not yet implemented.${RESET}"; exit 1 ;;
-            3) echo -e "\n  ${YELLOW}Slack adapter not yet implemented.${RESET}"; exit 1 ;;
+            2) PLATFORM="slack" ;;
+            3) echo -e "\n  ${YELLOW}Discord adapter not yet implemented.${RESET}"; exit 1 ;;
             *) echo -e "\n  ${RED}Invalid choice.${RESET}"; exit 1 ;;
         esac
     fi
@@ -228,6 +234,163 @@ EOF
         echo -e "  Next: ${CYAN}omt hub start${RESET}"
         echo ""
     fi
+
+    if [ "$PLATFORM" = "slack" ]; then
+        # Generate one-click manifest URL
+        local create_url=$(python3 -c "
+import urllib.parse, json
+m = {
+    'display_information': {
+        'name': 'Oh My Team',
+        'description': 'Multi-agent orchestration hub for Claude Code'
+    },
+    'features': {
+        'bot_user': {'display_name': 'Oh My Team', 'always_online': True}
+    },
+    'oauth_config': {
+        'scopes': {
+            'bot': ['chat:write','channels:history','channels:read','groups:history','groups:read','pins:write','users:read']
+        }
+    },
+    'settings': {
+        'event_subscriptions': {'bot_events': ['message.channels','message.groups']},
+        'socket_mode_enabled': True,
+        'org_deploy_enabled': False,
+        'token_rotation_enabled': False
+    }
+}
+print('https://api.slack.com/apps?new_app=1&manifest_json=' + urllib.parse.quote(json.dumps(m)))
+" 2>/dev/null)
+
+        # Step 2: Create Slack App
+        echo ""
+        echo -e "  ${BOLD}Step 2:${RESET} Create a Slack App"
+        echo ""
+        if [ -n "$create_url" ]; then
+            echo -e "    ${GREEN}One-click setup — open this URL:${RESET}"
+            echo ""
+            echo -e "    ${CYAN}${create_url}${RESET}"
+            echo ""
+            echo -e "    ${DIM}This pre-configures Socket Mode, scopes, and events.${RESET}"
+        else
+            echo -e "    Go to ${CYAN}https://api.slack.com/apps${RESET} → Create New App → From manifest"
+            echo -e "    Paste the manifest from: ${CYAN}$PLUGIN_DIR/channel/slack-manifest.yml${RESET}"
+        fi
+        echo ""
+        echo -e "    After creating the app:"
+        echo -e "    a) Generate an ${BOLD}App-Level Token${RESET}:"
+        echo -e "       Basic Information → App-Level Tokens → Generate Token"
+        echo -e "       Name: ${CYAN}omt${RESET}, Scope: ${CYAN}connections:write${RESET}"
+        echo -e "    b) ${BOLD}Install${RESET} the app to your workspace:"
+        echo -e "       OAuth & Permissions → Install to Workspace"
+        echo ""
+        read -p "  Done? Press Enter to continue... " _
+
+        # Step 3: App Token
+        if [ -z "$APP_TOKEN" ]; then
+            echo ""
+            echo -e "  ${BOLD}Step 3:${RESET} App-Level Token"
+            echo ""
+            echo -e "    Find it in: Settings → Basic Information → App-Level Tokens"
+            echo ""
+            read -p "  Paste your App Token (xapp-...): " APP_TOKEN
+            if [ -z "$APP_TOKEN" ] || [[ ! "$APP_TOKEN" =~ ^xapp- ]]; then
+                echo -e "  ${RED}Invalid App Token. Must start with xapp-${RESET}"
+                exit 1
+            fi
+        fi
+
+        # Verify app token
+        echo -e "  ${DIM}Verifying App Token...${RESET}"
+        local app_check=$(curl -s -H "Authorization: Bearer $APP_TOKEN" -X POST "https://slack.com/api/apps.connections.open")
+        if echo "$app_check" | grep -q '"ok":true'; then
+            echo -e "  ${GREEN}App Token valid${RESET}"
+        else
+            local app_err=$(echo "$app_check" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error','unknown'))" 2>/dev/null || echo "unknown")
+            echo -e "  ${RED}Invalid App Token: ${app_err}${RESET}"
+            echo -e "  ${DIM}Make sure Socket Mode is enabled and the token has connections:write scope.${RESET}"
+            exit 1
+        fi
+
+        # Step 4: Bot Token
+        if [ -z "$TOKEN" ]; then
+            echo ""
+            echo -e "  ${BOLD}Step 4:${RESET} Bot Token"
+            echo ""
+            echo -e "    Find it in: OAuth & Permissions → Bot User OAuth Token"
+            echo ""
+            read -p "  Paste your Bot Token (xoxb-...): " TOKEN
+            if [ -z "$TOKEN" ] || [[ ! "$TOKEN" =~ ^xoxb- ]]; then
+                echo -e "  ${RED}Invalid Bot Token. Must start with xoxb-${RESET}"
+                exit 1
+            fi
+        fi
+
+        # Verify bot token
+        echo -e "  ${DIM}Verifying Bot Token...${RESET}"
+        local bot_info=$(curl -s -H "Authorization: Bearer $TOKEN" "https://slack.com/api/auth.test")
+        if echo "$bot_info" | grep -q '"ok":true'; then
+            local bot_name=$(echo "$bot_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('user','bot'))" 2>/dev/null || echo "bot")
+            echo -e "  ${GREEN}Connected as @${bot_name}${RESET}"
+        else
+            local bot_err=$(echo "$bot_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error','unknown'))" 2>/dev/null || echo "unknown")
+            echo -e "  ${RED}Invalid Bot Token: ${bot_err}${RESET}"
+            exit 1
+        fi
+
+        # Step 5: Channel
+        if [ -z "$CHAT_ID" ]; then
+            echo ""
+            echo -e "  ${BOLD}Step 5:${RESET} Channel setup"
+            echo ""
+            echo -e "    1. Create a channel (e.g., ${CYAN}#omt${RESET}) or use an existing one"
+            echo -e "    2. Invite the bot: type ${CYAN}/invite @${bot_name}${RESET} in the channel"
+            echo -e "    3. Get the Channel ID:"
+            echo -e "       Click the channel name → scroll to the bottom of the About panel"
+            echo -e "       ${DIM}(or copy from the channel URL: .../C0123ABC456)${RESET}"
+            echo ""
+            read -p "  Paste Channel ID (starts with C): " CHAT_ID
+            if [ -z "$CHAT_ID" ] || [[ ! "$CHAT_ID" =~ ^C ]]; then
+                echo -e "  ${RED}Invalid Channel ID. Must start with C${RESET}"
+                exit 1
+            fi
+        fi
+
+        # Verify channel access
+        echo -e "  ${DIM}Verifying channel access...${RESET}"
+        local chan_info=$(curl -s -H "Authorization: Bearer $TOKEN" "https://slack.com/api/conversations.info?channel=$CHAT_ID")
+        if echo "$chan_info" | grep -q '"ok":true'; then
+            local chan_name=$(echo "$chan_info" | python3 -c "import json,sys; print(json.load(sys.stdin)['channel'].get('name','channel'))" 2>/dev/null || echo "channel")
+            echo -e "  ${GREEN}Connected to #${chan_name}${RESET}"
+        else
+            local chan_err=$(echo "$chan_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error','unknown'))" 2>/dev/null || echo "unknown")
+            echo -e "  ${RED}Cannot access channel: ${chan_err}${RESET}"
+            echo -e "  ${DIM}Make sure the bot is invited to the channel (/invite @${bot_name}).${RESET}"
+            exit 1
+        fi
+
+        # Save config
+        cat > "$CONFIG_PATH" << EOF
+{
+  "platform": "slack",
+  "credentials": {
+    "botToken": "$TOKEN",
+    "appToken": "$APP_TOKEN",
+    "channelId": "$CHAT_ID"
+  }
+}
+EOF
+
+        echo ""
+        echo -e "  ${GREEN}${BOLD}Hub configured!${RESET}"
+        echo ""
+        echo -e "  ${DIM}Platform:${RESET} Slack"
+        echo -e "  ${DIM}Bot:${RESET}      @${bot_name}"
+        echo -e "  ${DIM}Channel:${RESET}  #${chan_name} (${CHAT_ID})"
+        echo ""
+        echo -e "  Next: ${CYAN}omt hub start${RESET}"
+        echo ""
+    fi
 }
 
 hub_start() {
@@ -318,54 +481,64 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
                --dangerously-load-development-channels server:omt-bridge; \
              echo 'Hub stopped. Press any key...'; read -n1"
 
-        # Attach immediately so user can handle trust/channel prompts
-        echo -e "${GREEN}Attaching to hub session. Accept any prompts, then Ctrl+B, D to detach.${RESET}"
-        sleep 1
-        tmux attach-session -t "omt-hub"
-
-        # After user detaches, wait for bridge to be ready (longer timeout — trust prompts take time)
-        echo ""
-        echo -e "${DIM}Waiting for hub bridge to start...${RESET}"
-        local retries=0
-        while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
-            sleep 1
-            retries=$((retries + 1))
-            if [ $retries -gt 60 ]; then
-                echo -e "${YELLOW}Hub bridge not detected after 60s.${RESET}"
-                echo -e "${YELLOW}Attach and check: omt hub attach${RESET}"
-                break
-            fi
-            # Show progress every 5s
-            [ $((retries % 5)) -eq 0 ] && echo -e "  ${DIM}Still waiting... (${retries}s)${RESET}"
-        done
-
-        # Register hub as a session for the General topic (retry until success)
-        if curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; then
+        # Run bridge health check + registration in the background
+        # so it auto-registers while the user handles trust prompts in tmux
+        (
+            local retries=0
+            while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
+                sleep 1
+                retries=$((retries + 1))
+                [ $retries -gt 90 ] && exit 1
+            done
+            # Register hub — retry a few times in case router is briefly busy
             local reg_retries=0
             while [ $reg_retries -lt 5 ]; do
                 local reg_result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
                     -H "Content-Type: application/json" \
                     -d "{\"name\": \"hub\", \"path\": \"$HOME\", \"bridgePort\": $HUB_BRIDGE_PORT, \"isHub\": true}")
-                if echo "$reg_result" | grep -q '"threadId"' 2>/dev/null; then
-                    echo -e "${GREEN}Hub registered. Listening on Telegram General topic.${RESET}"
-                    break
-                fi
+                echo "$reg_result" | grep -q '"threadId"' 2>/dev/null && break
                 reg_retries=$((reg_retries + 1))
                 sleep 1
             done
+        ) &
+
+        # Attach immediately so user can handle trust/channel prompts
+        echo -e "${GREEN}Attaching to hub session. Accept any prompts, then Ctrl+B, D to detach.${RESET}"
+        sleep 1
+        tmux attach-session -t "omt-hub"
+
+        # After detach, check if registration already happened in background
+        if curl -s "http://localhost:$ROUTER_PORT/sessions/hub" 2>/dev/null | grep -q '"threadId"'; then
+            local platform=$(get_platform)
+            if [ "$platform" = "slack" ]; then
+                echo -e "${GREEN}Hub registered. Listening on Slack channel root.${RESET}"
+            else
+                echo -e "${GREEN}Hub registered. Listening on Telegram General topic.${RESET}"
+            fi
+        else
+            echo -e "${DIM}Hub registration pending — will auto-register when bridge is ready.${RESET}"
         fi
     fi
 
+    local platform=$(get_platform)
     echo ""
     echo -e "${GREEN}${BOLD}Oh My Team Hub is running.${RESET}"
     echo ""
     echo -e "  ${DIM}Router:${RESET}    http://localhost:$ROUTER_PORT"
     echo -e "  ${DIM}Hub:${RESET}       http://localhost:$HUB_BRIDGE_PORT"
     echo -e "  ${DIM}Attach:${RESET}    omt hub attach"
-    echo -e "  ${DIM}Telegram:${RESET}  Send a message in the General topic"
+    if [ "$platform" = "slack" ]; then
+        echo -e "  ${DIM}Slack:${RESET}     Post a message in the channel"
+    else
+        echo -e "  ${DIM}Telegram:${RESET}  Send a message in the General topic"
+    fi
     echo ""
     echo -e "  Add projects: ${CYAN}omt hub add <project-dir>${RESET}"
-    echo -e "  From Telegram: send \"start ~/projects/my-app\" in General"
+    if [ "$platform" = "slack" ]; then
+        echo -e "  From Slack: send \"start ~/projects/my-app\" in the channel"
+    else
+        echo -e "  From Telegram: send \"start ~/projects/my-app\" in General"
+    fi
 }
 
 hub_add() {
@@ -451,7 +624,7 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
         [ $((retries % 5)) -eq 0 ] && tmux send-keys -t "omt-$NAME" Enter 2>/dev/null
     done
 
-    # Register with router (creates the Telegram topic)
+    # Register with router (creates a thread/topic for the session)
     local result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
         -H "Content-Type: application/json" \
         -d "{\"name\": \"$NAME\", \"path\": \"$PROJECT_DIR\", \"bridgePort\": $PORT}")
@@ -461,11 +634,16 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
         return 1
     fi
 
+    local platform=$(get_platform)
     echo -e "${GREEN}${BOLD}Session '$NAME' started.${RESET}"
     echo -e "  ${DIM}Project:${RESET} $PROJECT_DIR"
     echo -e "  ${DIM}Bridge:${RESET}  http://localhost:$PORT"
     echo -e "  ${DIM}Attach:${RESET}  omt hub attach $NAME"
-    echo -e "  ${DIM}Talk to it in its Telegram topic.${RESET}"
+    if [ "$platform" = "slack" ]; then
+        echo -e "  ${DIM}Talk to it in its Slack thread.${RESET}"
+    else
+        echo -e "  ${DIM}Talk to it in its Telegram topic.${RESET}"
+    fi
 }
 
 hub_remove() {
@@ -621,7 +799,9 @@ if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  omt -c                           Continue last session"
     echo ""
     echo "Hub (remote multi-project management):"
-    echo "  omt hub init --telegram <token> --chat-id <id>  Configure"
+    echo "  omt hub init                    Configure hub (interactive)"
+    echo "  omt hub init --telegram --token <t> --chat-id <id>"
+    echo "  omt hub init --slack --token <xoxb> --app-token <xapp> --channel-id <C>"
     echo "  omt hub start                    Start router + hub session"
     echo "  omt hub add <dir>                Add a project session"
     echo "  omt hub remove <name>            Stop a project session"

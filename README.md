@@ -62,7 +62,7 @@ omt -d
 | | Local Mode | Hub Mode |
 |---|---|---|
 | **Start** | `omt -d` | `omt hub start` |
-| **Interface** | Terminal + tmux panes | Telegram (or terminal) |
+| **Interface** | Terminal + tmux panes | Telegram / Slack (or terminal) |
 | **Projects** | One at a time | Multiple, always alive |
 | **Remote** | No | Yes, via channels from any device |
 | **Best for** | Active coding sessions | Background work, monitoring, multi-project |
@@ -73,13 +73,32 @@ omt -d
 |---------|----------------|
 | One AI, one project, one terminal | Multiple projects, always running |
 | Close laptop = work stops | Hub keeps sessions alive |
-| No visibility while away | Telegram shows progress + asks permission |
+| No visibility while away | Telegram/Slack shows progress + asks permission |
 | One agent does everything | 12 specialists work in parallel |
 | No quality gates | 5-agent review catches what you miss |
 
 ## Installation
 
-### Claude Code Plugin (recommended)
+### Let your LLM agent do it (recommended)
+
+Copy this into Claude Code, Cursor, or any LLM agent:
+
+```
+Install and configure oh-my-team by following the instructions here:
+https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/install.md
+```
+
+The agent handles prerequisites, installation, and configuration. Humans fat-finger configs.
+
+### npm (manual)
+
+```bash
+brew install tmux                          # macOS (or apt install tmux on Linux)
+npm i -g oh-my-team                        # install plugin + CLI
+omt -d                                     # start
+```
+
+### Claude Code Plugin
 
 Inside a Claude Code session:
 
@@ -88,42 +107,17 @@ Inside a Claude Code session:
 /plugin install oh-my-team
 ```
 
-Then run `/reload-plugins` to activate.
-
-### npm
-
-```bash
-npm i -g oh-my-team
-```
-
-Installs the `omt` CLI and configures Claude Code automatically.
-
-### Git clone
-
-```bash
-git clone https://github.com/erkandogan/oh-my-team.git
-cd oh-my-team
-./install.sh
-```
-
-The installer:
-- Copies the plugin to `~/.oh-my-team/`
-- Creates the `omt` CLI wrapper at `~/.local/bin/omt`
-- Enables experimental agent teams in Claude Code settings
-- Sets tmux split-pane mode for teammate visibility
-- Installs a custom status line showing active agents and teams
-- Checks for tmux (required for split-pane view)
+Then `/reload-plugins` to activate.
 
 ### Requirements
 
 - [Claude Code](https://claude.com/code) v2.1.80+
-- [tmux](https://github.com/tmux/tmux/wiki) (for split-pane view and persistent sessions)
-- [Bun](https://bun.sh) (for hub/channel features only)
+- [tmux](https://github.com/tmux/tmux/wiki) — split-pane agent view and persistent sessions
+- [Bun](https://bun.sh) — hub/channel features only (Telegram, Slack)
 
-```bash
-brew install tmux  # macOS
-curl -fsSL https://bun.sh/install | bash  # Bun (optional, for hub)
-```
+### Full guide
+
+See the [Installation Guide](docs/install.md) for prerequisites, troubleshooting, and hub setup.
 
 ### Uninstall
 
@@ -301,7 +295,7 @@ Oh My Team is a Claude Code plugin with a lightweight channel system. The core i
 
 ## Hub — Remote Multi-Project Management
 
-Control multiple projects from any device. The hub runs on your machine and connects to Telegram (Discord, Slack coming soon). Each project gets its own topic — zero cross-talk, zero extra token cost.
+Control multiple projects from any device. The hub runs on your machine and connects to Telegram or Slack (Discord coming soon). Each project gets its own topic/thread — zero cross-talk, zero extra token cost.
 
 ```
 Telegram Group: "Oh My Team Hub"
@@ -320,26 +314,24 @@ Telegram Group: "Oh My Team Hub"
 
 ### Setup (one-time)
 
-**1. Create a Telegram bot:**
-- Open [@BotFather](https://t.me/BotFather) → `/newbot` → choose a name and username
-- Copy the bot token
-- **Important:** In BotFather, go to **Bot Settings → Group Privacy → Turn OFF**. The bot must be able to read all group messages.
-
-**2. Create a Telegram group:**
-- Create a new group (e.g., "Oh My Team Hub")
-- Add your bot to the group
-- **Make the bot admin** (Group Settings → Administrators → Add)
-- **Enable Topics** (Group Settings → Topics → ON)
-- Send any message in the group (so the bot can detect the chat ID)
-
-**3. Run the interactive setup:**
-```bash
-omt hub init
-# Walks you through: paste token → auto-detects group → verifies access
-
-omt hub start
-# Starts the router + hub session
+Tell your LLM agent:
 ```
+Set up Oh My Team hub by following:
+https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/hub-telegram.md
+```
+or for Slack:
+```
+Set up Oh My Team hub by following:
+https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/hub-slack.md
+```
+
+Or run the interactive wizard:
+```bash
+omt hub init     # choose platform, paste tokens, done
+omt hub start    # starts router + hub session
+```
+
+Detailed guides: [Telegram Setup](docs/hub-telegram.md) | [Slack Setup](docs/hub-slack.md)
 
 ### Usage from Telegram
 
@@ -385,12 +377,11 @@ omt hub stop                     # stop everything
 
 ### Supported platforms
 
-| Platform | Status | Thread model |
-|----------|--------|-------------|
-| Telegram | Available | Forum Topics |
-| Discord | Coming soon | Channels or Threads |
-| Slack | Coming soon | Threads |
-| WhatsApp | Planned | -- |
+| Platform | Status | Thread model | Setup guide |
+|----------|--------|-------------|-------------|
+| Telegram | Available | Forum Topics | [Guide](docs/hub-telegram.md) |
+| Slack | Available | Channel Threads (Socket Mode) | [Guide](docs/hub-slack.md) |
+| Discord | Coming soon | Channels or Threads | -- |
 
 Adding a new platform = one adapter file (~150 lines) implementing the `ChannelAdapter` interface. Bridge and router are platform-agnostic.
 
@@ -417,6 +408,10 @@ Shows: active agent, team name, teammate count, context usage (color-coded), ses
 
 ```
 oh-my-team/
++-- docs/
+|   +-- install.md               # LLM-friendly installation guide
+|   +-- hub-telegram.md          # Telegram hub setup
+|   +-- hub-slack.md             # Slack hub setup
 +-- .claude-plugin/
 |   +-- plugin.json              # Plugin manifest
 +-- agents/                      # 12 specialized agents
@@ -447,7 +442,9 @@ oh-my-team/
 |   +-- adapters/
 |   |   +-- types.ts             # ChannelAdapter interface
 |   |   +-- telegram.ts          # Telegram Topics adapter
+|   |   +-- slack.ts             # Slack Threads adapter (Socket Mode)
 |   |   +-- index.ts             # Adapter registry
+|   +-- slack-manifest.yml       # One-click Slack App manifest
 |   +-- bridge.mcp.json          # MCP config for bridge
 |   +-- package.json             # Channel dependencies
 +-- bin/
