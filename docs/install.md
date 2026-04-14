@@ -5,7 +5,7 @@
 >
 > ```
 > Install and configure oh-my-team by following the instructions here:
-> https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/install.md
+> https://raw.githubusercontent.com/erkandogan/oh-my-team/master/docs/install.md
 > ```
 
 ---
@@ -120,8 +120,8 @@ The Hub lets you control multiple Claude Code sessions from Telegram or Slack. E
 
 **Choose your platform and follow the guide:**
 
-- **Telegram**: [Hub Telegram Setup](https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/hub-telegram.md)
-- **Slack**: [Hub Slack Setup](https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/hub-slack.md)
+- **Telegram**: [Hub Telegram Setup](https://raw.githubusercontent.com/erkandogan/oh-my-team/master/docs/hub-telegram.md)
+- **Slack**: [Hub Slack Setup](https://raw.githubusercontent.com/erkandogan/oh-my-team/master/docs/hub-slack.md)
 
 Or run the interactive wizard:
 ```bash

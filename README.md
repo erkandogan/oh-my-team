@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/erkandogan/oh-my-team/main/image.svg" alt="Oh My Team" width="200">
+  <img src="https://raw.githubusercontent.com/erkandogan/oh-my-team/master/image.svg" alt="Oh My Team" width="200">
   <h1 align="center">Oh My Team</h1>
   <p align="center">
     Multi-agent orchestration for Claude Code.<br/>
@@ -9,7 +9,7 @@
     <a href="https://www.npmjs.com/package/oh-my-team"><img src="https://img.shields.io/npm/v/oh-my-team?color=red" alt="npm version"></a>
     <a href="https://www.npmjs.com/package/oh-my-team"><img src="https://img.shields.io/npm/dm/oh-my-team?color=orange" alt="npm downloads"></a>
     <a href="https://github.com/erkandogan/oh-my-team/stargazers"><img src="https://img.shields.io/github/stars/erkandogan/oh-my-team?style=flat&color=yellow" alt="GitHub stars"></a>
-    <a href="https://github.com/erkandogan/oh-my-team/blob/main/LICENSE"><img src="https://img.shields.io/github/license/erkandogan/oh-my-team?color=blue" alt="License: MIT"></a>
+    <a href="https://github.com/erkandogan/oh-my-team/blob/master/LICENSE"><img src="https://img.shields.io/github/license/erkandogan/oh-my-team?color=blue" alt="License: MIT"></a>
     <a href="https://github.com/erkandogan/oh-my-team/issues"><img src="https://img.shields.io/github/issues/erkandogan/oh-my-team?color=green" alt="Issues"></a>
     <a href="https://github.com/erkandogan/oh-my-team/commits/main"><img src="https://img.shields.io/github/last-commit/erkandogan/oh-my-team" alt="Last commit"></a>
   </p>
@@ -26,7 +26,7 @@
 ---
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/erkandogan/oh-my-team/main/showcase.gif" alt="Oh My Team in action" width="700">
+  <img src="https://raw.githubusercontent.com/erkandogan/oh-my-team/master/showcase.gif" alt="Oh My Team in action" width="700">
 </p>
 
 **Oh My Team** gives Claude Code a full development team — 12 specialized agents working in parallel across tmux panes. Plan, build, review, and debug with dedicated specialists instead of one AI doing everything. Run it locally, or deploy the **Hub** for always-alive multi-project sessions you control from Telegram or Slack.
@@ -85,7 +85,7 @@ Copy this into Claude Code, Cursor, or any LLM agent:
 
 ```
 Install and configure oh-my-team by following the instructions here:
-https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/install.md
+https://raw.githubusercontent.com/erkandogan/oh-my-team/master/docs/install.md
 ```
 
 The agent handles prerequisites, installation, and configuration. Humans fat-finger configs.
@@ -317,12 +317,12 @@ Telegram Group: "Oh My Team Hub"
 Tell your LLM agent:
 ```
 Set up Oh My Team hub by following:
-https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/hub-telegram.md
+https://raw.githubusercontent.com/erkandogan/oh-my-team/master/docs/hub-telegram.md
 ```
 or for Slack:
 ```
 Set up Oh My Team hub by following:
-https://raw.githubusercontent.com/erkandogan/oh-my-team/main/docs/hub-slack.md
+https://raw.githubusercontent.com/erkandogan/oh-my-team/master/docs/hub-slack.md
 ```
 
 Or run the interactive wizard:
