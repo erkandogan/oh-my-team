@@ -22,18 +22,7 @@ import type {
   ThreadInfo,
   PermissionPrompt,
 } from "./types";
-import {
-  AttachmentDownloadError,
-  AttachmentTooLarge,
-  classifyMime,
-  downloadToFile,
-  ensureAttachmentDir,
-  guessMimeFromName,
-  MAX_ATTACHMENT_SIZE,
-  sweepOldAttachments,
-  uniqueFilename,
-} from "./media";
-import path from "node:path";
+import { saveAttachment } from "./media";
 
 // ── Slack event types (minimal, only what we use) ─────────────────────
 
@@ -344,51 +333,19 @@ export class SlackAdapter implements ChannelAdapter {
     if (file.mode === "tombstone") return null;
     if (!file.url_private_download) {
       process.stderr.write(
-        `omt-slack: skipping file ${file.id} — no private download URL\n`
-      );
-      return null;
-    }
-    if (file.size && file.size > MAX_ATTACHMENT_SIZE) {
-      process.stderr.write(
-        `omt-slack: skipping ${file.id} — size ${file.size} exceeds ${MAX_ATTACHMENT_SIZE}\n`
+        `omt-slack: ${file.id}: skipping — no private download URL\n`
       );
       return null;
     }
 
-    const fallbackName = file.name || file.title || `file_${file.id}`;
-    const dir = await ensureAttachmentDir(threadId);
-    const destPath = path.join(dir, uniqueFilename(fallbackName));
-
-    try {
-      const { size } = await downloadToFile(file.url_private_download, destPath, {
-        headers: { Authorization: `Bearer ${this.botToken}` },
-      });
-      void sweepOldAttachments(threadId);
-
-      const mimeType = file.mimetype || guessMimeFromName(fallbackName);
-      return {
-        path: destPath,
-        name: fallbackName,
-        mimeType,
-        size,
-        kind: classifyMime(mimeType),
-      };
-    } catch (err) {
-      if (err instanceof AttachmentTooLarge) {
-        process.stderr.write(
-          `omt-slack: ${file.id} exceeded size cap (${err.size} > ${err.limit})\n`
-        );
-      } else if (err instanceof AttachmentDownloadError) {
-        process.stderr.write(
-          `omt-slack: download failed for ${file.id}: ${err.message}\n`
-        );
-      } else {
-        process.stderr.write(
-          `omt-slack: download error for ${file.id}: ${err instanceof Error ? err.message : err}\n`
-        );
-      }
-      return null;
-    }
+    return saveAttachment(file.url_private_download, threadId, {
+      fallbackName: file.name || file.title || `file_${file.id}`,
+      mimeType: file.mimetype,
+      declaredSize: file.size,
+      headers: { Authorization: `Bearer ${this.botToken}` },
+      source: "slack",
+      id: file.id,
+    });
   }
 
   // ── Thread management ──────────────────────────────────────────────

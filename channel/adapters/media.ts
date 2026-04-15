@@ -238,8 +238,87 @@ export async function downloadToFile(
     )
     return { size: written }
   } catch (err) {
-    // Clean up partial file on any failure
+    // pipeline() auto-destroys the stream on error; we only need to wipe
+    // the partial file so callers never see half-written attachments.
     await rm(destPath, { force: true }).catch(() => {})
     throw err
+  }
+}
+
+// ── High-level adapter helper ──────────────────────────────────────────────
+
+export interface SaveAttachmentOptions {
+  /** Name to use when the URL or platform doesn't provide one. Also kept as the
+   *  Attachment.name returned to callers (for display). */
+  fallbackName: string
+  /** MIME type reported by the platform, if any. Falls back to extension guess. */
+  mimeType?: string
+  /** Size reported by the platform. Used for a cheap reject-before-fetch check. */
+  declaredSize?: number
+  /** Override the inferred AttachmentKind (e.g. classifyMime returns "audio" but
+   *  you know it's a "voice" message). */
+  kind?: AttachmentKind
+  /** Extra HTTP headers — typically `{ Authorization: "Bearer ..." }` for Slack. */
+  headers?: Record<string, string>
+  /** Short adapter identifier used in stderr log prefixes ("telegram", "slack"). */
+  source: string
+  /** Opaque label for error logs — usually the platform file_id. Helps operators
+   *  match a log line back to a specific upload. */
+  id?: string
+}
+
+/**
+ * Download one media URL to the thread's attachment directory and return
+ * an Attachment ready to hand to the router. Swallows all failures, logs
+ * them to stderr with the given `source` prefix, and returns null — which
+ * is exactly what adapters want (one bad file shouldn't block the rest of
+ * the message).
+ *
+ * The two adapters share everything except the URL shape: Telegram needs
+ * a `getFile` round-trip first, Slack has `url_private_download` directly.
+ * Keep that platform-specific step in the adapter, then call this.
+ */
+export async function saveAttachment(
+  url: string,
+  threadId: string,
+  opts: SaveAttachmentOptions
+): Promise<import("./types").Attachment | null> {
+  const tag = opts.id ? `omt-${opts.source}: ${opts.id}` : `omt-${opts.source}`
+
+  // Cheapest rejection path — trust the platform's declared size.
+  if (opts.declaredSize && opts.declaredSize > MAX_ATTACHMENT_SIZE) {
+    process.stderr.write(
+      `${tag}: skipping — declared size ${opts.declaredSize} exceeds ${MAX_ATTACHMENT_SIZE}\n`
+    )
+    return null
+  }
+
+  const dir = await ensureAttachmentDir(threadId)
+  const destPath = path.join(dir, uniqueFilename(opts.fallbackName))
+
+  try {
+    const { size } = await downloadToFile(url, destPath, { headers: opts.headers })
+    // Opportunistic cleanup — don't await, don't block the message.
+    void sweepOldAttachments(threadId)
+
+    const mimeType = opts.mimeType || guessMimeFromName(opts.fallbackName)
+    return {
+      path: destPath,
+      name: opts.fallbackName,
+      mimeType,
+      size,
+      kind: opts.kind || classifyMime(mimeType),
+    }
+  } catch (err) {
+    if (err instanceof AttachmentTooLarge) {
+      process.stderr.write(`${tag}: exceeded size cap (${err.size} > ${err.limit})\n`)
+    } else if (err instanceof AttachmentDownloadError) {
+      process.stderr.write(`${tag}: download failed: ${err.message}\n`)
+    } else {
+      process.stderr.write(
+        `${tag}: download error: ${err instanceof Error ? err.message : err}\n`
+      )
+    }
+    return null
   }
 }

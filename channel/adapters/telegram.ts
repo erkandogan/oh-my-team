@@ -21,18 +21,7 @@ import type {
   ThreadInfo,
   PermissionPrompt,
 } from "./types";
-import {
-  AttachmentDownloadError,
-  AttachmentTooLarge,
-  classifyMime,
-  downloadToFile,
-  ensureAttachmentDir,
-  guessMimeFromName,
-  MAX_ATTACHMENT_SIZE,
-  sweepOldAttachments,
-  uniqueFilename,
-} from "./media";
-import path from "node:path";
+import { saveAttachment } from "./media";
 
 // ── Telegram Bot API types (minimal, only what we use) ─────────────────────
 
@@ -518,59 +507,26 @@ export class TelegramAdapter implements ChannelAdapter {
       kind?: AttachmentKind;
     }
   ): Promise<Attachment | null> {
-    // Pre-flight size check using the declared size, before any network work.
-    if (opts.declaredSize && opts.declaredSize > MAX_ATTACHMENT_SIZE) {
-      process.stderr.write(
-        `omt-telegram: skipping ${fileId} — declared size ${opts.declaredSize} exceeds ${MAX_ATTACHMENT_SIZE}\n`
-      );
-      return null;
-    }
-
-    // Step 1: resolve file_id → file_path via Bot API.
+    // Resolve file_id → file_path via Bot API. The actual download is shared
+    // with Slack (see saveAttachment in media.ts).
     const info = await this.api("getFile", { file_id: fileId });
     if (!info.ok || !info.result?.file_path) {
       process.stderr.write(
-        `omt-telegram: getFile failed for ${fileId}: ${info.description || "unknown error"}\n`
+        `omt-telegram: ${fileId}: getFile failed: ${info.description || "unknown error"}\n`
       );
       return null;
     }
     const serverPath = String(info.result.file_path);
-
-    // Step 2: stream the content to disk.
-    const dir = await ensureAttachmentDir(threadId);
-    const name = path.basename(serverPath) || opts.fallbackName;
-    const destPath = path.join(dir, uniqueFilename(name));
     const url = `https://api.telegram.org/file/bot${this.token}/${serverPath}`;
 
-    try {
-      const { size } = await downloadToFile(url, destPath);
-      // Opportunistic cleanup — don't await, don't block the message.
-      void sweepOldAttachments(threadId);
-
-      const mimeType = opts.mimeType || guessMimeFromName(name);
-      return {
-        path: destPath,
-        name: opts.fallbackName,
-        mimeType,
-        size,
-        kind: opts.kind || classifyMime(mimeType),
-      };
-    } catch (err) {
-      if (err instanceof AttachmentTooLarge) {
-        process.stderr.write(
-          `omt-telegram: ${fileId} exceeded size cap (${err.size} > ${err.limit})\n`
-        );
-      } else if (err instanceof AttachmentDownloadError) {
-        process.stderr.write(
-          `omt-telegram: download failed for ${fileId}: ${err.message}\n`
-        );
-      } else {
-        process.stderr.write(
-          `omt-telegram: download error for ${fileId}: ${err instanceof Error ? err.message : err}\n`
-        );
-      }
-      return null;
-    }
+    return saveAttachment(url, threadId, {
+      fallbackName: opts.fallbackName,
+      mimeType: opts.mimeType,
+      declaredSize: opts.declaredSize,
+      kind: opts.kind,
+      source: "telegram",
+      id: fileId,
+    });
   }
 
   // ── Telegram Bot API helper ────────────────────────────────────────

@@ -22,6 +22,7 @@ import {
   removeAttachmentDir,
   sanitizeFilename,
   sanitizeSegment,
+  saveAttachment,
   sweepOldAttachments,
   uniqueFilename,
 } from "./media"
@@ -269,5 +270,71 @@ describe("sweepOldAttachments", () => {
 
     expect(existsSync(fresh)).toBe(true)
     expect(existsSync(old)).toBe(false)
+  })
+})
+
+// ── saveAttachment (high-level helper) ──────────────────────────────────
+
+describe("saveAttachment", () => {
+  test("returns a populated Attachment on success", async () => {
+    const att = await saveAttachment(`${serverUrl}/file/512`, "sa-test-1", {
+      fallbackName: "report.pdf",
+      mimeType: "application/pdf",
+      source: "test",
+      id: "file-123",
+    })
+    expect(att).not.toBeNull()
+    expect(att!.name).toBe("report.pdf")
+    expect(att!.mimeType).toBe("application/pdf")
+    expect(att!.size).toBe(512)
+    expect(att!.kind).toBe("document")
+    expect(existsSync(att!.path)).toBe(true)
+  })
+
+  test("returns null (not throws) on download failure", async () => {
+    const att = await saveAttachment(`${serverUrl}/404`, "sa-test-2", {
+      fallbackName: "missing.txt",
+      source: "test",
+    })
+    expect(att).toBeNull()
+  })
+
+  test("rejects before hitting the network when declaredSize exceeds cap", async () => {
+    const att = await saveAttachment(`${serverUrl}/file/999999`, "sa-test-3", {
+      fallbackName: "huge.bin",
+      declaredSize: 100 * 1024 * 1024, // 100MB > 20MB cap
+      source: "test",
+    })
+    expect(att).toBeNull()
+  })
+
+  test("concurrent downloads to the same thread get unique filenames", async () => {
+    // Fire several downloads in parallel. Because uniqueFilename() stamps
+    // each name with Date.now(), there IS a narrow window where two calls
+    // could collide. The timestamp is ms resolution and downloads take
+    // longer than that to start writing, so in practice filenames diverge
+    // because the name prefix also varies — but we assert the invariant
+    // explicitly so a future change can't regress it.
+    const results = await Promise.all([
+      saveAttachment(`${serverUrl}/file/100`, "concurrent", { fallbackName: "a.bin", source: "test" }),
+      saveAttachment(`${serverUrl}/file/200`, "concurrent", { fallbackName: "b.bin", source: "test" }),
+      saveAttachment(`${serverUrl}/file/300`, "concurrent", { fallbackName: "c.bin", source: "test" }),
+      saveAttachment(`${serverUrl}/file/400`, "concurrent", { fallbackName: "d.bin", source: "test" }),
+      saveAttachment(`${serverUrl}/file/500`, "concurrent", { fallbackName: "e.bin", source: "test" }),
+    ])
+
+    // All succeeded
+    expect(results.every((r) => r !== null)).toBe(true)
+
+    // All paths are distinct — no silent overwrites
+    const paths = new Set(results.map((r) => r!.path))
+    expect(paths.size).toBe(5)
+
+    // Each file has the expected payload size
+    expect(results[0]!.size).toBe(100)
+    expect(results[4]!.size).toBe(500)
+
+    // All files exist on disk
+    for (const r of results) expect(existsSync(r!.path)).toBe(true)
   })
 })

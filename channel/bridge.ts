@@ -37,8 +37,14 @@ if (!BRIDGE_PORT || isNaN(BRIDGE_PORT)) {
 }
 
 // Claude Code captures MCP subprocess stderr internally — we can't see it.
-// Tee everything to a log file the operator CAN see.
-const LOG_PATH = `${process.env.OMT_HUB_DIR || `${process.env.HOME}/.oh-my-team`}/bridge-${SESSION_NAME}.log`;
+// Tee everything to a log file the operator CAN see. Resolve the hub dir the
+// same way media.ts does so bridge + adapter write under the same root even
+// when HOME is unset (`cwd` is a safe last-resort rather than "undefined/").
+import path from "node:path";
+const HUB_DIR =
+  process.env.OMT_HUB_DIR ||
+  path.join(process.env.HOME || ".", ".oh-my-team");
+const LOG_PATH = path.join(HUB_DIR, `bridge-${SESSION_NAME}.log`);
 const logFile = Bun.file(LOG_PATH);
 const logWriter = logFile.writer();
 function log(msg: string) {
