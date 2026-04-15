@@ -414,14 +414,26 @@ Bun.serve({
         );
       }
 
-      // Clean up status message and typing indicator
+      // Finalize status message (keep it visible, don't delete)
       const status = sessionStatus.get(sessionName);
-      if (status) {
-        if (status.messageId && adapter.deleteStatusMessage) {
-          adapter.deleteStatusMessage(session.threadId, status.messageId).catch(() => {});
+      if (status && status.messageId && adapter.updateStatusMessage) {
+        const elapsed = Math.round((Date.now() - status.startedAt) / 1000);
+        const elapsedStr =
+          elapsed >= 60
+            ? `${Math.floor(elapsed / 60)}m${String(elapsed % 60).padStart(2, "0")}s`
+            : `${elapsed}s`;
+        const lines: string[] = [`Done (${elapsedStr})`];
+        const maxDone = 8;
+        const doneSlice = status.done.slice(-maxDone);
+        if (status.done.length > maxDone) {
+          lines.push(`  ...${status.done.length - maxDone} earlier steps`);
         }
-        clearSessionStatus(sessionName);
+        for (const item of doneSlice) {
+          lines.push(`  ✓ ${item}`);
+        }
+        adapter.updateStatusMessage(session.threadId, status.messageId, lines.join("\n")).catch(() => {});
       }
+      clearSessionStatus(sessionName);
 
       try {
         await adapter.send(session.threadId, text);
@@ -458,9 +470,18 @@ Bun.serve({
       const status = getOrCreateStatus(sessionName);
 
       if (statusType === "stop") {
-        // Turn complete — clean up status message
-        if (status.messageId && adapter.deleteStatusMessage) {
-          adapter.deleteStatusMessage(session.threadId, status.messageId).catch(() => {});
+        // Turn complete — finalize status message (keep visible)
+        if (status.messageId && adapter.updateStatusMessage) {
+          const elapsed = Math.round((Date.now() - status.startedAt) / 1000);
+          const elapsedStr =
+            elapsed >= 60
+              ? `${Math.floor(elapsed / 60)}m${String(elapsed % 60).padStart(2, "0")}s`
+              : `${elapsed}s`;
+          const lines: string[] = [`Done (${elapsedStr})`];
+          for (const item of status.done.slice(-8)) {
+            lines.push(`  ✓ ${item}`);
+          }
+          adapter.updateStatusMessage(session.threadId, status.messageId, lines.join("\n")).catch(() => {});
         }
         clearSessionStatus(sessionName);
         return Response.json({ status: "cleared" });
