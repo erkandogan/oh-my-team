@@ -10,14 +10,21 @@
 #   type: "done"    = action completed (shown with ✓)
 #   type: "stop"    = turn ended (clean up status message)
 #
-# Only active for hub sessions (ROUTER_URL and SESSION_NAME must be set).
+# Claude Code doesn't pass custom env vars to hooks. We read ROUTER_URL
+# and SESSION_NAME from .omt-env in the session's CWD (extracted from
+# the hook's stdin JSON "cwd" field).
 
-[ -z "$ROUTER_URL" ] && exit 0
-[ -z "$SESSION_NAME" ] && exit 0
-
-# Read the full event JSON from stdin into a temp file
+# Read stdin into temp file first (contains the event JSON with cwd)
 TMPFILE=$(mktemp)
 cat > "$TMPFILE"
+
+# Extract cwd from the JSON and source .omt-env from there
+SESSION_CWD=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('cwd',''))" "$TMPFILE" 2>/dev/null)
+[ -n "$SESSION_CWD" ] && [ -f "$SESSION_CWD/.omt-env" ] && source "$SESSION_CWD/.omt-env"
+
+# If still no ROUTER_URL, this isn't a hub session — exit silently
+[ -z "$ROUTER_URL" ] && { rm -f "$TMPFILE"; exit 0; }
+[ -z "$SESSION_NAME" ] && { rm -f "$TMPFILE"; exit 0; }
 
 python3 << 'PYEOF' "$TMPFILE" "$ROUTER_URL" "$SESSION_NAME"
 import sys, json, urllib.request, os

@@ -12,6 +12,7 @@ Thumbs.db
 # Temporary
 *.tmp
 *.log
+.omt-env
 
 # Node/Bun
 node_modules/

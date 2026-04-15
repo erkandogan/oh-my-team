@@ -14,18 +14,38 @@ const CONFIG_FILE = path.join(HOME, '.claude.json');
 
 console.log('\n  Oh My Team — Post-install setup\n');
 
-// 1. Copy plugin to ~/.oh-my-team
+// 1. Copy plugin to ~/.oh-my-team (preserve hub config files)
 try {
+    // Back up user config files before wiping
+    const CONFIG_FILES = ['hub-config.json', 'hub-registry.json', '.mcp.json', 'settings.json'];
+    const backups = {};
+    for (const f of CONFIG_FILES) {
+        const p = path.join(INSTALL_DIR, f);
+        if (fs.existsSync(p)) {
+            backups[f] = fs.readFileSync(p, 'utf8');
+        }
+    }
+
     if (fs.existsSync(INSTALL_DIR)) {
         fs.rmSync(INSTALL_DIR, { recursive: true });
     }
     fs.cpSync(PLUGIN_ROOT, INSTALL_DIR, { recursive: true });
+
     // Clean up npm artifacts from the copy
     ['node_modules', 'package.json', 'package-lock.json', '.git'].forEach(f => {
         const p = path.join(INSTALL_DIR, f);
         if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
     });
-    console.log('  [OK] Plugin installed to ~/.oh-my-team');
+
+    // Restore user config files
+    for (const [f, content] of Object.entries(backups)) {
+        fs.writeFileSync(path.join(INSTALL_DIR, f), content);
+    }
+    if (Object.keys(backups).length > 0) {
+        console.log(`  [OK] Plugin installed to ~/.oh-my-team (preserved ${Object.keys(backups).join(', ')})`);
+    } else {
+        console.log('  [OK] Plugin installed to ~/.oh-my-team');
+    }
 } catch (e) {
     console.log('  [!] Could not copy plugin files:', e.message);
 }

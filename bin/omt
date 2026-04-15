@@ -478,6 +478,12 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
 
         echo -e "  ${DIM}Bridge MCP registered. Settings cleared.${RESET}"
 
+        # Write session env for hooks (Claude Code doesn't pass custom env vars to hooks)
+        cat > "$HOME/.omt-env" << ENVEOF
+ROUTER_URL=http://localhost:$ROUTER_PORT
+SESSION_NAME=hub
+ENVEOF
+
         echo -e "${YELLOW}The hub session will open in this terminal.${RESET}"
         echo -e "${YELLOW}You may need to accept trust/channel prompts on first run.${RESET}"
         echo -e "${YELLOW}After it starts, press Ctrl+B then D to detach.${RESET}"
@@ -612,6 +618,12 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
 " 2>/dev/null
     fi
 
+    # Write session env for hooks (Claude Code doesn't pass custom env vars to hooks)
+    cat > "$PROJECT_DIR/.omt-env" << ENVEOF
+ROUTER_URL=http://localhost:$ROUTER_PORT
+SESSION_NAME=$NAME
+ENVEOF
+
     # Start Claude session with bridge in tmux
     # Auto-accept prompts: pipe Enter keystrokes after a delay to handle
     # the workspace trust and development channel warning dialogs
@@ -682,6 +694,9 @@ hub_remove() {
 
     require_router
 
+    # Get session path before removing (for .omt-env cleanup)
+    local session_path=$(curl -s "http://localhost:$ROUTER_PORT/sessions/$NAME" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+
     # Unregister from router (closes Telegram topic)
     curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$NAME" > /dev/null 2>&1
 
@@ -689,6 +704,9 @@ hub_remove() {
     if tmux has-session -t "omt-$NAME" 2>/dev/null; then
         tmux kill-session -t "omt-$NAME"
     fi
+
+    # Clean up .omt-env
+    [ -n "$session_path" ] && rm -f "$session_path/.omt-env" 2>/dev/null
 
     echo -e "${GREEN}Stopped: $NAME${RESET}"
 }
@@ -765,11 +783,17 @@ hub_stop() {
     if [ -n "$sessions" ]; then
         while IFS= read -r s; do
             local name="${s#omt-}"
+            # Clean up .omt-env before removing session
+            local session_path=$(curl -s "http://localhost:$ROUTER_PORT/sessions/$name" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+            [ -n "$session_path" ] && rm -f "$session_path/.omt-env" 2>/dev/null
             curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$name" > /dev/null 2>&1
             tmux kill-session -t "$s" 2>/dev/null
             echo -e "  ${GREEN}Stopped: ${s#omt-}${RESET}"
         done <<< "$sessions"
     fi
+
+    # Clean up hub .omt-env
+    rm -f "$HOME/.omt-env" 2>/dev/null
 
     # Stop hub
     if tmux has-session -t "omt-hub" 2>/dev/null; then
