@@ -21,12 +21,18 @@ import type {
   InboundMessage,
 } from "./adapters/types";
 import { removeAttachmentDir } from "./adapters/media";
+import path from "node:path";
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
 const ROUTER_PORT = Number(process.env.ROUTER_PORT) || 8800;
+// Resolve the hub directory defensively: when HOME is unset the naive
+// template would stringify to "undefined/.oh-my-team" and silently write
+// the registry to a bogus path. bridge.ts and media.ts use the same
+// `HOME || "."` fallback.
 const OMT_HUB_DIR =
-  process.env.OMT_HUB_DIR || `${process.env.HOME}/.oh-my-team`;
+  process.env.OMT_HUB_DIR ||
+  path.join(process.env.HOME || ".", ".oh-my-team");
 const REGISTRY_PATH = `${OMT_HUB_DIR}/hub-registry.json`;
 const CONFIG_PATH = `${OMT_HUB_DIR}/hub-config.json`;
 

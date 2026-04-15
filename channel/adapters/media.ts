@@ -68,10 +68,23 @@ export function sanitizeSegment(seg: string): string {
   return String(seg).replace(UNSAFE_CHARS, "_").slice(0, MAX_NAME_LEN) || "unknown"
 }
 
-/** Build a unique filename like "1710000000123_photo.jpg" scoped to a dir. */
+/**
+ * Build a unique filename for a downloaded attachment.
+ *
+ * Format: `${timestamp}_${random}_${safeName}` — e.g. `1710000000123_k9f2xa_photo.jpg`.
+ *
+ * The random suffix protects against the edge case where two attachments
+ * arrive in the same millisecond with the same original filename (for
+ * example, a Slack upload of two `Screenshot.png` files). Without it,
+ * `uniqueFilename("Screenshot.png")` called twice in the same tick would
+ * return the same string and the second download would overwrite the first.
+ */
 export function uniqueFilename(originalName: string | undefined | null): string {
   const safe = sanitizeFilename(originalName)
-  return `${Date.now()}_${safe}`
+  // 6 base-36 chars ≈ 2 billion combinations — collision-resistant enough
+  // for per-millisecond disambiguation without pulling in a UUID library.
+  const rand = Math.random().toString(36).slice(2, 8).padEnd(6, "0")
+  return `${Date.now()}_${rand}_${safe}`
 }
 
 // ── MIME classification ────────────────────────────────────────────────────
@@ -182,10 +195,31 @@ export class AttachmentTooLarge extends Error {
   }
 }
 
+/**
+ * Redact secrets that may be embedded in URL paths before they land in
+ * error messages or log files.
+ *
+ * Known patterns:
+ *   - Telegram: `https://api.telegram.org/file/bot<TOKEN>/path/to/file`
+ *     → `https://api.telegram.org/file/bot<REDACTED>/path/to/file`
+ *   - Slack uses headers, not URL secrets, so nothing special to do.
+ *
+ * We prefer over-redacting to under-redacting; future adapters that put
+ * tokens in URLs should extend this list.
+ */
+export function redactUrl(url: string): string {
+  return String(url).replace(/\/bot[^/?#]+/g, "/bot<REDACTED>")
+}
+
 export class AttachmentDownloadError extends Error {
-  constructor(public status: number, public statusText: string, public url: string) {
-    super(`download failed: HTTP ${status} ${statusText}`)
+  public readonly url: string
+  constructor(public status: number, public statusText: string, rawUrl: string) {
+    // Store and display only the redacted URL. The bot token used in the
+    // real request never appears in logs, messages, or stack traces.
+    const safe = redactUrl(rawUrl)
+    super(`download failed: HTTP ${status} ${statusText} (${safe})`)
     this.name = "AttachmentDownloadError"
+    this.url = safe
   }
 }
 

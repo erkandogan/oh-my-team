@@ -19,6 +19,7 @@ import {
   downloadToFile,
   ensureAttachmentDir,
   guessMimeFromName,
+  redactUrl,
   removeAttachmentDir,
   sanitizeFilename,
   sanitizeSegment,
@@ -68,6 +69,26 @@ beforeAll(() => {
 
       if (url.pathname === "/404") {
         return new Response("not found", { status: 404 })
+      }
+
+      // /auth/:size — returns the requested bytes ONLY when the caller sent
+      // `Authorization: Bearer expected-token`. Anything else → 401. Used to
+      // verify adapters pass the bot token through to downloadToFile.
+      if (url.pathname.startsWith("/auth/")) {
+        const auth = req.headers.get("authorization")
+        if (auth !== "Bearer expected-token") {
+          return new Response("unauthorized", { status: 401 })
+        }
+        const size = Number(url.pathname.split("/")[2]) || 0
+        return new Response(Buffer.alloc(size, "a"), {
+          headers: { "Content-Type": "application/octet-stream" },
+        })
+      }
+
+      // /tg/bot<TOKEN>/file.bin — mimics Telegram's file URL so we can assert
+      // the error message redacts the token segment rather than leaking it.
+      if (url.pathname.startsWith("/tg/bot")) {
+        return new Response("forbidden", { status: 403 })
       }
 
       return new Response("ok", { status: 200 })
@@ -160,10 +181,24 @@ describe("guessMimeFromName / classifyMime", () => {
 // ── uniqueFilename ──────────────────────────────────────────────────────
 
 describe("uniqueFilename", () => {
-  test("prefixes with timestamp and keeps extension", () => {
+  test("prefixes with timestamp + random and keeps extension", () => {
     const name = uniqueFilename("cat.jpg")
     expect(name.endsWith("_cat.jpg")).toBe(true)
-    expect(name).toMatch(/^\d+_cat\.jpg$/)
+    // Format: <ms timestamp>_<6 base36 chars>_<safeName>
+    expect(name).toMatch(/^\d+_[a-z0-9]{6}_cat\.jpg$/)
+  })
+
+  test("same name called rapidly yields distinct filenames (collision-resistant)", () => {
+    // Simulate the worst case: same original name, called thousands of times
+    // within the same tight loop — many will land in the same millisecond.
+    const names = new Set<string>()
+    for (let i = 0; i < 1000; i++) {
+      names.add(uniqueFilename("Screenshot.png"))
+    }
+    // Without the random suffix this would collapse to ~1 entry; with it
+    // we expect ~1000 distinct names (tiny birthday-paradox risk, but far
+    // from the near-certain collisions the old impl produced).
+    expect(names.size).toBeGreaterThan(990)
   })
 })
 
@@ -336,5 +371,61 @@ describe("saveAttachment", () => {
 
     // All files exist on disk
     for (const r of results) expect(existsSync(r!.path)).toBe(true)
+  })
+
+  test("forwards headers to fetch — Slack Bearer token pattern", async () => {
+    // Without headers → 401 → returns null
+    const without = await saveAttachment(`${serverUrl}/auth/256`, "hdr-test-1", {
+      fallbackName: "needs-auth.bin",
+      source: "test",
+    })
+    expect(without).toBeNull()
+
+    // With matching Authorization header → 200 → success
+    const withAuth = await saveAttachment(`${serverUrl}/auth/256`, "hdr-test-2", {
+      fallbackName: "needs-auth.bin",
+      headers: { Authorization: "Bearer expected-token" },
+      source: "test",
+    })
+    expect(withAuth).not.toBeNull()
+    expect(withAuth!.size).toBe(256)
+  })
+})
+
+// ── URL redaction (prevents bot token leakage) ──────────────────────────
+
+describe("redactUrl / AttachmentDownloadError", () => {
+  test("redactUrl masks the token segment in Telegram-style URLs", () => {
+    const raw = "https://api.telegram.org/file/bot123456:AAAAAA-secret/photos/file_1.jpg"
+    const safe = redactUrl(raw)
+    expect(safe).toBe(
+      "https://api.telegram.org/file/bot<REDACTED>/photos/file_1.jpg"
+    )
+    expect(safe).not.toContain("AAAAAA-secret")
+    expect(safe).not.toContain("123456")
+  })
+
+  test("redactUrl leaves normal URLs untouched", () => {
+    const raw = "https://files.slack.com/files-pri/T123/F456/screenshot.png"
+    expect(redactUrl(raw)).toBe(raw)
+  })
+
+  test("AttachmentDownloadError stores and displays only the redacted URL", async () => {
+    try {
+      await downloadToFile(
+        `${serverUrl}/tg/bot999:TOP-SECRET/file.bin`,
+        path.join(tmpBase, "never-written.bin")
+      )
+      expect("should not reach here").toBe("but we did")
+    } catch (err) {
+      expect(err).toBeInstanceOf(AttachmentDownloadError)
+      const e = err as AttachmentDownloadError
+      // The token must NOT appear in any string exposed by the error.
+      expect(e.message).not.toContain("TOP-SECRET")
+      expect(e.message).not.toContain("999:TOP-SECRET")
+      expect(e.url).not.toContain("TOP-SECRET")
+      // And the placeholder should be present so operators can still see the host/path shape.
+      expect(e.message).toContain("bot<REDACTED>")
+    }
   })
 })
