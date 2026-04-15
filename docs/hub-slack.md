@@ -130,6 +130,17 @@ Slack Channel: #omt
 - Claude responds in the **same thread**. Hub never sees it — zero extra token cost.
 - **Permission prompts** appear in the thread — reply `yes <code>` or `no <code>`.
 
+## Sharing images and files
+
+Any files you upload in a thread (images, PDFs, voice clips, etc.) are
+downloaded by the hub and their local paths are passed to the Claude session.
+Claude can then use its `Read` tool to view them.
+
+**Limits:**
+- Max file size: **20 MB** per attachment.
+- Files live under `~/.oh-my-team/attachments/<thread>/` and are deleted
+  automatically 24 hours later, or immediately when the session is removed.
+
 ## Troubleshooting
 
 ### Bot doesn't receive messages

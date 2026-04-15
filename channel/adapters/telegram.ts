@@ -15,10 +15,13 @@
 import type {
   ChannelAdapter,
   AdapterConfig,
+  Attachment,
+  AttachmentKind,
   InboundMessage,
   ThreadInfo,
   PermissionPrompt,
 } from "./types";
+import { saveAttachment } from "./media";
 
 // ── Telegram Bot API types (minimal, only what we use) ─────────────────────
 
@@ -41,7 +44,65 @@ interface TgMessage {
     type: string;
   };
   text?: string;
+  /** Caption accompanying photo/video/document. Treat as the "text" of a media message. */
+  caption?: string;
   date: number;
+  /** Photos arrive as an array of sizes — pick the largest. */
+  photo?: TgPhotoSize[];
+  /** Generic file uploads. */
+  document?: TgDocument;
+  /** Telegram voice messages (.ogg Opus). Transcription lives behind a separate issue. */
+  voice?: TgVoice;
+  /** Round video "circles" — treated like videos. */
+  video?: TgVideo;
+  /** Standalone audio files. */
+  audio?: TgAudio;
+}
+
+interface TgPhotoSize {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
+interface TgDocument {
+  file_id: string;
+  file_unique_id: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+interface TgVoice {
+  file_id: string;
+  file_unique_id: string;
+  duration: number;
+  mime_type?: string;
+  file_size?: number;
+}
+
+interface TgVideo {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  duration: number;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+interface TgAudio {
+  file_id: string;
+  file_unique_id: string;
+  duration: number;
+  performer?: string;
+  title?: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
 }
 
 interface TgForumTopic {
@@ -313,14 +374,16 @@ export class TelegramAdapter implements ChannelAdapter {
     }
   }
 
-  private handleUpdate(update: TgUpdate): void {
+  private async handleUpdate(update: TgUpdate): Promise<void> {
     const msg = update.message;
-    if (!msg || !msg.text || !msg.from) return;
+    if (!msg || !msg.from) return;
 
     // Only handle messages from our configured group
     if (String(msg.chat.id) !== this.chatId) return;
 
-    const text = msg.text.trim();
+    // Message text — may be empty for media-only messages. Prefer the
+    // explicit text field; fall back to the caption attached to media.
+    const text = (msg.text || msg.caption || "").trim();
     const threadId = msg.message_thread_id
       ? String(msg.message_thread_id)
       : "__general__";
@@ -334,7 +397,13 @@ export class TelegramAdapter implements ChannelAdapter {
       return;
     }
 
-    // Regular message — forward to callback
+    // Download any media attachments. Errors are logged but don't block the
+    // message — we still want the caption/text through even if a file fails.
+    const attachments = await this.downloadAttachments(msg, threadId);
+
+    // Nothing to forward? (empty text AND no attachments)
+    if (!text && attachments.length === 0) return;
+
     if (this.messageCallback) {
       this.messageCallback({
         threadId,
@@ -345,8 +414,119 @@ export class TelegramAdapter implements ChannelAdapter {
           .join(" "),
         messageId: String(msg.message_id),
         timestamp: new Date(msg.date * 1000).toISOString(),
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
     }
+  }
+
+  // ── Attachment downloading ─────────────────────────────────────────
+
+  /** Walk a message's media fields and download each. Never throws —
+   *  individual failures are logged and the rest proceed. */
+  private async downloadAttachments(
+    msg: TgMessage,
+    threadId: string
+  ): Promise<Attachment[]> {
+    const jobs: Promise<Attachment | null>[] = [];
+
+    // Photos: Telegram sends multiple resolutions; pick the largest (last entry).
+    if (msg.photo && msg.photo.length > 0) {
+      const best = msg.photo[msg.photo.length - 1];
+      jobs.push(
+        this.downloadFile(best.file_id, threadId, {
+          fallbackName: `photo_${best.file_unique_id}.jpg`,
+          mimeType: "image/jpeg",
+          declaredSize: best.file_size,
+          kind: "image",
+        })
+      );
+    }
+
+    // Documents, audio, video, voice: each uses the same download path.
+    if (msg.document) {
+      jobs.push(
+        this.downloadFile(msg.document.file_id, threadId, {
+          fallbackName: msg.document.file_name || `document_${msg.document.file_unique_id}`,
+          mimeType: msg.document.mime_type,
+          declaredSize: msg.document.file_size,
+        })
+      );
+    }
+    if (msg.audio) {
+      jobs.push(
+        this.downloadFile(msg.audio.file_id, threadId, {
+          fallbackName: msg.audio.file_name || `audio_${msg.audio.file_unique_id}.mp3`,
+          mimeType: msg.audio.mime_type,
+          declaredSize: msg.audio.file_size,
+          kind: "audio",
+        })
+      );
+    }
+    if (msg.video) {
+      jobs.push(
+        this.downloadFile(msg.video.file_id, threadId, {
+          fallbackName: msg.video.file_name || `video_${msg.video.file_unique_id}.mp4`,
+          mimeType: msg.video.mime_type,
+          declaredSize: msg.video.file_size,
+          kind: "video",
+        })
+      );
+    }
+    if (msg.voice) {
+      // Voice messages: saved as attachments today. Transcription/voice-bridge
+      // support lives behind a separate issue — the session just gets the .ogg
+      // for now and can Read/describe it if it wants.
+      jobs.push(
+        this.downloadFile(msg.voice.file_id, threadId, {
+          fallbackName: `voice_${msg.voice.file_unique_id}.ogg`,
+          mimeType: msg.voice.mime_type || "audio/ogg",
+          declaredSize: msg.voice.file_size,
+          kind: "voice",
+        })
+      );
+    }
+
+    const results = await Promise.all(jobs);
+    return results.filter((x): x is Attachment => x !== null);
+  }
+
+  /**
+   * Download a single Telegram file by `file_id` via the Bot API.
+   * Two-step: (1) getFile → file_path, (2) GET /file/bot<token>/<file_path>.
+   *
+   * Returns null on any failure (size limit, network, API error). The message
+   * still flows — we just drop the file and log why.
+   */
+  private async downloadFile(
+    fileId: string,
+    threadId: string,
+    opts: {
+      fallbackName: string;
+      mimeType?: string;
+      declaredSize?: number;
+      kind?: AttachmentKind;
+    }
+  ): Promise<Attachment | null> {
+    // Resolve file_id → file_path via Bot API. The actual download is shared
+    // with Slack (see saveAttachment in media.ts).
+    const info = await this.api("getFile", { file_id: fileId });
+    if (!info.ok || !info.result?.file_path) {
+      process.stderr.write(
+        `omt-telegram: ${fileId}: getFile failed: ${info.description || "unknown error"}\n`
+      );
+      return null;
+    }
+    const serverPath = String(info.result.file_path);
+    const url = `https://api.telegram.org/file/bot${this.token}/${serverPath}`;
+
+    return saveAttachment(url, threadId, {
+      fallbackName: opts.fallbackName,
+      mimeType: opts.mimeType,
+      declaredSize: opts.declaredSize,
+      kind: opts.kind,
+      source: "telegram",
+      id: fileId,
+    });
   }
 
   // ── Telegram Bot API helper ────────────────────────────────────────
