@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "bridge": "bun run bridge.ts",
-    "router": "bun run router.ts"
+    "router": "bun run router.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

@@ -20,7 +20,7 @@ export interface AdapterConfig {
 export interface InboundMessage {
   /** Platform-specific thread/topic/channel identifier */
   threadId: string
-  /** The message text content */
+  /** The message text content (may be empty when the message is media-only) */
   text: string
   /** Platform-specific sender identifier */
   senderId: string
@@ -30,7 +30,39 @@ export interface InboundMessage {
   messageId: string
   /** ISO 8601 timestamp */
   timestamp: string
+  /** Files/images the user shared. Adapters download them and expose
+   *  local absolute paths the Claude session can read with its Read tool. */
+  attachments?: Attachment[]
 }
+
+// ── Attachment (downloaded media) ──────────────────────────────────────────
+
+/**
+ * A media attachment (photo, document, voice note, etc.) that the adapter
+ * has already downloaded to the local filesystem. The bridge passes the
+ * absolute `path` to the Claude session so it can view the file.
+ */
+export interface Attachment {
+  /** Absolute filesystem path where the adapter saved the file */
+  path: string
+  /** Original filename reported by the platform (best-effort, may be synthetic for photos) */
+  name: string
+  /** MIME type reported by the platform, or a best-effort guess from extension */
+  mimeType: string
+  /** File size in bytes */
+  size: number
+  /** High-level classification used for display hints and downstream routing */
+  kind: AttachmentKind
+}
+
+/** High-level attachment classification. "other" is a catch-all. */
+export type AttachmentKind =
+  | "image"
+  | "document"
+  | "audio"
+  | "voice"
+  | "video"
+  | "other"
 
 // ── Thread info returned when creating a session thread ────────────────────
 
