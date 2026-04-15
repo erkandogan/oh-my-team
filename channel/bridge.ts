@@ -36,6 +36,33 @@ if (!BRIDGE_PORT || isNaN(BRIDGE_PORT)) {
   process.exit(1);
 }
 
+// Claude Code captures MCP subprocess stderr internally — we can't see it.
+// Tee everything to a log file the operator CAN see.
+const LOG_PATH = `${process.env.OMT_HUB_DIR || `${process.env.HOME}/.oh-my-team`}/bridge-${SESSION_NAME}.log`;
+const logFile = Bun.file(LOG_PATH);
+const logWriter = logFile.writer();
+function log(msg: string) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  process.stderr.write(line);
+  try {
+    logWriter.write(line);
+    logWriter.flush();
+  } catch {
+    // best-effort
+  }
+}
+
+// Surface any unhandled errors — without this, a rejected promise in the HTTP
+// handler can silently take down the process under Bun.
+process.on("unhandledRejection", (err) => {
+  log(`UNHANDLED REJECTION: ${err instanceof Error ? err.stack || err.message : String(err)}`);
+});
+process.on("uncaughtException", (err) => {
+  log(`UNCAUGHT EXCEPTION: ${err.stack || err.message}`);
+});
+
+log(`start session=${SESSION_NAME} port=${BRIDGE_PORT}`);
+
 // ── Attachment formatting ──────────────────────────────────────────────────
 
 interface ChannelAttachment {
@@ -245,6 +272,8 @@ Bun.serve({
         const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
         const text = typeof content === "string" ? content : "";
 
+        log(`/message text=${text.length}b attachments=${hasAttachments ? attachments!.length : 0}`);
+
         // Require at least one of: text content or at least one attachment.
         // (Users can send photo-only messages with no caption.)
         if (!text && !hasAttachments) {
@@ -260,25 +289,35 @@ Bun.serve({
           ? formatContentWithAttachments(text, attachments!)
           : text;
 
-        await mcp.notification({
-          method: "notifications/claude/channel",
-          params: {
-            content: finalContent,
-            meta: {
-              session: SESSION_NAME,
-              sender: sender || "unknown",
-              sender_id: senderId || "",
-              message_id: messageId || "",
-              ts: timestamp || new Date().toISOString(),
-              attachments: hasAttachments ? attachments : undefined,
+        try {
+          // Note: we intentionally don't add attachment metadata to `meta` here —
+          // Claude Code's channel notification schema appears to reject unknown
+          // fields and close the MCP connection if they're present. The content
+          // string already carries the <attachments> block so the model sees them.
+          await mcp.notification({
+            method: "notifications/claude/channel",
+            params: {
+              content: finalContent,
+              meta: {
+                session: SESSION_NAME,
+                sender: sender || "unknown",
+                sender_id: senderId || "",
+                message_id: messageId || "",
+                ts: timestamp || new Date().toISOString(),
+              },
             },
-          },
-        });
+          });
+          log(`notification delivered`);
+        } catch (notifyErr) {
+          const m = notifyErr instanceof Error ? notifyErr.message : String(notifyErr);
+          log(`notification FAILED: ${m}`);
+          throw notifyErr;
+        }
 
         return Response.json({ status: "delivered" });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`omt-bridge: message delivery failed: ${message}\n`);
+        log(`/message handler error: ${message}`);
         return Response.json({ error: message }, { status: 500 });
       }
     }
