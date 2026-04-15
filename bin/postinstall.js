@@ -50,7 +50,26 @@ try {
     console.log('  [!] Could not copy plugin files:', e.message);
 }
 
-// 2. Enable agent teams in Claude settings
+// 2. Copy agents used by --agent flag to ~/.claude/agents/
+//    Claude Code's --agent looks in ~/.claude/agents/, not in --plugin-dir
+try {
+    const AGENTS_DIR = path.join(HOME, '.claude', 'agents');
+    fs.mkdirSync(AGENTS_DIR, { recursive: true });
+    const HUB_AGENTS = ['hub.md', 'sisyphus.md'];
+    for (const agent of HUB_AGENTS) {
+        const src = path.join(INSTALL_DIR, 'agents', agent);
+        const dst = path.join(AGENTS_DIR, agent);
+        if (fs.existsSync(src)) {
+            fs.copyFileSync(src, dst);
+        }
+    }
+    console.log('  [OK] Agents registered in ~/.claude/agents/');
+} catch (e) {
+    console.log('  [!] Could not copy agents:', e.message);
+}
+
+// 3. Enable agent teams in Claude settings
+// (renumbered from original step 2)
 try {
     fs.mkdirSync(path.join(HOME, '.claude'), { recursive: true });
     let settings = {};

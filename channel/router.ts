@@ -477,14 +477,27 @@ Bun.serve({
 
       const formatted = formatStatus(status);
 
+      process.stderr.write(
+        `omt-router: /status ${sessionName} msgId=${status.messageId || 'null'} type=${statusType} text="${statusText.slice(0, 50)}"\n`
+      );
+
       if (status.messageId && adapter.updateStatusMessage) {
-        adapter.updateStatusMessage(session.threadId, status.messageId, formatted).catch(() => {});
+        adapter.updateStatusMessage(session.threadId, status.messageId, formatted)
+          .then(() => {
+            process.stderr.write(`omt-router: updateStatusMessage OK\n`);
+          })
+          .catch((err) => {
+            process.stderr.write(`omt-router: updateStatusMessage FAILED: ${err}\n`);
+          });
       } else if (adapter.sendStatusMessage) {
         adapter.sendStatusMessage(session.threadId, formatted)
           .then((msgId) => {
             status.messageId = msgId;
+            process.stderr.write(`omt-router: sendStatusMessage OK msgId=${msgId}\n`);
           })
-          .catch(() => {});
+          .catch((err) => {
+            process.stderr.write(`omt-router: sendStatusMessage FAILED: ${err}\n`);
+          });
       }
 
       return Response.json({ status: "updated" });

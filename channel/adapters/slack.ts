@@ -412,11 +412,14 @@ export class SlackAdapter implements ChannelAdapter {
   }
 
   async updateStatusMessage(_threadId: string, messageId: string, text: string): Promise<void> {
-    await this.api("chat.update", {
+    const result = await this.api("chat.update", {
       channel: this.channelId,
       ts: messageId,
       text,
-    }).catch(() => {});
+    });
+    if (!result.ok) {
+      process.stderr.write(`omt-slack: chat.update failed: ${result.error}\n`);
+    }
   }
 
   async deleteStatusMessage(_threadId: string, messageId: string): Promise<void> {

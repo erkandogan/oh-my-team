@@ -1,5 +1,4 @@
 {
-  "description": "Oh My Team — Live status hooks for hub sessions",
   "hooks": {
     "SessionStart": [
       {

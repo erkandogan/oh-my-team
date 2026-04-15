@@ -247,17 +247,30 @@ export class TelegramAdapter implements ChannelAdapter {
     if (threadId !== "__general__") {
       params.message_thread_id = Number(threadId);
     }
-    const result = await this.api("sendMessage", params);
+    let result = await this.api("sendMessage", params);
+    // Retry without Markdown if parse failed
+    if (!result.ok && result.description?.includes("parse")) {
+      delete params.parse_mode;
+      result = await this.api("sendMessage", params);
+    }
     return String(result.result?.message_id || "");
   }
 
   async updateStatusMessage(_threadId: string, messageId: string, text: string): Promise<void> {
-    await this.api("editMessageText", {
+    const result = await this.api("editMessageText", {
       chat_id: this.chatId,
       message_id: Number(messageId),
       text,
       parse_mode: "Markdown",
-    }).catch(() => {});
+    });
+    // Retry without Markdown if parse failed (status text often has backticks/underscores)
+    if (!result.ok) {
+      await this.api("editMessageText", {
+        chat_id: this.chatId,
+        message_id: Number(messageId),
+        text,
+      }).catch(() => {});
+    }
   }
 
   async deleteStatusMessage(_threadId: string, messageId: string): Promise<void> {
