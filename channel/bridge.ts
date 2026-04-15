@@ -36,6 +36,58 @@ if (!BRIDGE_PORT || isNaN(BRIDGE_PORT)) {
   process.exit(1);
 }
 
+// ── Attachment formatting ──────────────────────────────────────────────────
+
+interface ChannelAttachment {
+  path: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: string;
+}
+
+/**
+ * Compose a channel message that makes attachments visible to the session.
+ *
+ * The user's original caption/text comes first. Below it we include a
+ * structured block listing each file with its local path and metadata so
+ * Claude can use the Read tool to view any that are relevant.
+ *
+ * The XML-ish tags are easy for the model to parse and unlikely to collide
+ * with normal prose. We intentionally avoid putting raw paths on a bare
+ * line so nothing looks like a command.
+ */
+function formatContentWithAttachments(
+  text: string,
+  attachments: ChannelAttachment[]
+): string {
+  const lines: string[] = [];
+  if (text) {
+    lines.push(text);
+    lines.push("");
+  }
+  lines.push(`<attachments count="${attachments.length}">`);
+  for (const a of attachments) {
+    lines.push(
+      `  <file kind="${a.kind}" name="${escapeAttr(a.name)}" mime="${escapeAttr(a.mimeType)}" size="${a.size}" path="${escapeAttr(a.path)}" />`
+    );
+  }
+  lines.push(`</attachments>`);
+  lines.push("");
+  lines.push(
+    `(The user shared ${attachments.length === 1 ? "a file" : `${attachments.length} files`} — use the Read tool on any of the paths above to view the contents.)`
+  );
+  return lines.join("\n");
+}
+
+function escapeAttr(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // ── MCP Server ─────────────────────────────────────────────────────────────
 
 const mcp = new Server(
@@ -54,6 +106,8 @@ const mcp = new Server(
       "Reply using the reply tool. Keep replies concise — they go to a chat app, not a terminal.",
       "For long code output, summarize and mention the file path instead of pasting full content.",
       "Permission prompts are forwarded to the user automatically.",
+      "When a message contains an <attachments> block, the listed paths are files the user shared.",
+      "Use the Read tool on those paths to view images, PDFs, or other content the user attached.",
     ].join(" "),
   }
 );
@@ -173,28 +227,50 @@ Bun.serve({
     if (req.method === "POST" && url.pathname === "/message") {
       try {
         const body = await req.json();
-        const { content, sender, senderId, messageId, timestamp } = body as {
+        const { content, sender, senderId, messageId, timestamp, attachments } = body as {
           content: string;
           sender: string;
           senderId: string;
           messageId?: string;
           timestamp?: string;
+          attachments?: Array<{
+            path: string;
+            name: string;
+            mimeType: string;
+            size: number;
+            kind: string;
+          }>;
         };
 
-        if (!content || typeof content !== "string") {
-          return Response.json({ error: "content is required" }, { status: 400 });
+        const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+        const text = typeof content === "string" ? content : "";
+
+        // Require at least one of: text content or at least one attachment.
+        // (Users can send photo-only messages with no caption.)
+        if (!text && !hasAttachments) {
+          return Response.json(
+            { error: "content or attachments required" },
+            { status: 400 }
+          );
         }
+
+        // Compose the channel content: original text first, then a structured
+        // attachments block so Claude can Read the files directly.
+        const finalContent = hasAttachments
+          ? formatContentWithAttachments(text, attachments!)
+          : text;
 
         await mcp.notification({
           method: "notifications/claude/channel",
           params: {
-            content,
+            content: finalContent,
             meta: {
               session: SESSION_NAME,
               sender: sender || "unknown",
               sender_id: senderId || "",
               message_id: messageId || "",
               ts: timestamp || new Date().toISOString(),
+              attachments: hasAttachments ? attachments : undefined,
             },
           },
         });

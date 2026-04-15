@@ -20,6 +20,7 @@ import type {
   ChannelAdapter,
   InboundMessage,
 } from "./adapters/types";
+import { removeAttachmentDir } from "./adapters/media";
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
@@ -236,6 +237,7 @@ adapter.onMessage((message: InboundMessage) => {
       senderId: message.senderId,
       messageId: message.messageId,
       timestamp: message.timestamp,
+      attachments: message.attachments,
     }),
   }).catch((err) => {
     process.stderr.write(
@@ -388,6 +390,9 @@ Bun.serve({
           `omt-router: Failed to close thread for "${name}": ${err}\n`
         );
       }
+
+      // Remove any attachments stored for this thread. Best-effort — never throws.
+      await removeAttachmentDir(session.threadId);
 
       delete registry.sessions[name];
       saveRegistry(registry);

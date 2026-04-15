@@ -86,6 +86,29 @@ start ~/projects/my-app
 
 A new topic appears for the project. Messages there go directly to its Claude session.
 
+## Sharing images and files
+
+Photos, documents, voice messages, and other files you send in a topic are
+downloaded by the hub and made available to the Claude session. The session
+sees a message like:
+
+```
+<your caption, if any>
+
+<attachments count="1">
+  <file kind="image" name="screenshot.png" mime="image/png" size=12345
+        path="/Users/you/.oh-my-team/attachments/<thread>/<file>" />
+</attachments>
+```
+
+Claude can then use the `Read` tool on the path to view the file. This is how
+you share error screenshots, diagrams, PDFs, or voice notes from your phone.
+
+**Limits:**
+- Max file size: **20 MB** (Telegram Bot API cap on `getFile`).
+- Files are deleted automatically 24 hours after upload, or when you run
+  `omt hub remove <session>`.
+
 ## Troubleshooting
 
 ### Bot doesn't read messages

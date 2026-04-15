@@ -17,10 +17,23 @@
 import type {
   ChannelAdapter,
   AdapterConfig,
+  Attachment,
   InboundMessage,
   ThreadInfo,
   PermissionPrompt,
 } from "./types";
+import {
+  AttachmentDownloadError,
+  AttachmentTooLarge,
+  classifyMime,
+  downloadToFile,
+  ensureAttachmentDir,
+  guessMimeFromName,
+  MAX_ATTACHMENT_SIZE,
+  sweepOldAttachments,
+  uniqueFilename,
+} from "./media";
+import path from "node:path";
 
 // ── Slack event types (minimal, only what we use) ─────────────────────
 
@@ -33,6 +46,21 @@ interface SlackEvent {
   ts: string;
   thread_ts?: string;
   channel?: string;
+  /** File uploads accompanying a message (images, PDFs, audio, etc.). */
+  files?: SlackFile[];
+}
+
+interface SlackFile {
+  id: string;
+  name?: string;
+  title?: string;
+  mimetype?: string;
+  filetype?: string;
+  size?: number;
+  /** Authenticated download URL. Requires `Authorization: Bearer <bot_token>`. */
+  url_private_download?: string;
+  /** Some tombstone/deleted file types arrive with mode="tombstone" — skip those. */
+  mode?: string;
 }
 
 interface SlackApiResponse {
@@ -244,14 +272,22 @@ export class SlackAdapter implements ChannelAdapter {
       return;
     }
 
-    // Ignore bot messages, message subtypes (edits, joins, pins, etc.)
-    if (event.subtype || event.bot_id) return;
-    if (!event.text || !event.user) return;
+    // Ignore message subtype "file_share" for bot_id but let user file_share through.
+    // The subtype "file_share" was deprecated; modern Slack sends regular messages
+    // with a `files` array. We allow message-level subtype === "file_share" for back-compat.
+    const isFileShare = event.subtype === "file_share";
+    if (event.subtype && !isFileShare) return;
+    if (event.bot_id) return;
+    if (!event.user) return;
+
+    // Allow empty text when there are files attached (media-only messages).
+    const hasFiles = Array.isArray(event.files) && event.files.length > 0;
+    if (!event.text && !hasFiles) return;
 
     // Ignore our own messages (safety net)
     if (event.user === this.botUserId) return;
 
-    const text = event.text.trim();
+    const text = (event.text || "").trim();
 
     // thread_ts present → thread reply, absent → channel root (hub)
     const threadId = event.thread_ts || "__general__";
@@ -268,6 +304,13 @@ export class SlackAdapter implements ChannelAdapter {
     // Get human-readable sender name
     const senderName = await this.getUserName(event.user);
 
+    // Download any file uploads attached to this message.
+    const attachments = hasFiles
+      ? await this.downloadAttachments(event.files!, threadId)
+      : [];
+
+    if (!text && attachments.length === 0) return;
+
     // Forward as regular message
     if (this.messageCallback) {
       this.messageCallback({
@@ -277,7 +320,74 @@ export class SlackAdapter implements ChannelAdapter {
         senderName,
         messageId: event.ts,
         timestamp: new Date(Number(event.ts) * 1000).toISOString(),
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
+    }
+  }
+
+  // ── File downloading ───────────────────────────────────────────────
+
+  private async downloadAttachments(
+    files: SlackFile[],
+    threadId: string
+  ): Promise<Attachment[]> {
+    const jobs = files.map((f) => this.downloadFile(f, threadId));
+    const results = await Promise.all(jobs);
+    return results.filter((x): x is Attachment => x !== null);
+  }
+
+  private async downloadFile(
+    file: SlackFile,
+    threadId: string
+  ): Promise<Attachment | null> {
+    // Skip tombstones (deleted uploads) and files with no downloadable URL.
+    if (file.mode === "tombstone") return null;
+    if (!file.url_private_download) {
+      process.stderr.write(
+        `omt-slack: skipping file ${file.id} — no private download URL\n`
+      );
+      return null;
+    }
+    if (file.size && file.size > MAX_ATTACHMENT_SIZE) {
+      process.stderr.write(
+        `omt-slack: skipping ${file.id} — size ${file.size} exceeds ${MAX_ATTACHMENT_SIZE}\n`
+      );
+      return null;
+    }
+
+    const fallbackName = file.name || file.title || `file_${file.id}`;
+    const dir = await ensureAttachmentDir(threadId);
+    const destPath = path.join(dir, uniqueFilename(fallbackName));
+
+    try {
+      const { size } = await downloadToFile(file.url_private_download, destPath, {
+        headers: { Authorization: `Bearer ${this.botToken}` },
+      });
+      void sweepOldAttachments(threadId);
+
+      const mimeType = file.mimetype || guessMimeFromName(fallbackName);
+      return {
+        path: destPath,
+        name: fallbackName,
+        mimeType,
+        size,
+        kind: classifyMime(mimeType),
+      };
+    } catch (err) {
+      if (err instanceof AttachmentTooLarge) {
+        process.stderr.write(
+          `omt-slack: ${file.id} exceeded size cap (${err.size} > ${err.limit})\n`
+        );
+      } else if (err instanceof AttachmentDownloadError) {
+        process.stderr.write(
+          `omt-slack: download failed for ${file.id}: ${err.message}\n`
+        );
+      } else {
+        process.stderr.write(
+          `omt-slack: download error for ${file.id}: ${err instanceof Error ? err.message : err}\n`
+        );
+      }
+      return null;
     }
   }
 

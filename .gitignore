@@ -27,6 +27,7 @@ hub-registry.json
 hub-config.json
 .next-bridge-port
 router.log
+attachments/
 
 # Claude Code local state
 .sisyphus/
