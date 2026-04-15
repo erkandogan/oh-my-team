@@ -394,6 +394,12 @@ EOF
 }
 
 hub_start() {
+    local CONTINUE_FLAG=""
+    if [ "$1" = "-c" ] || [ "$1" = "--continue" ]; then
+        CONTINUE_FLAG="--continue"
+        shift
+    fi
+
     require_bun
     require_config
 
@@ -459,8 +465,16 @@ cfg.setdefault('mcpServers', {})['omt-bridge'] = {
 with open(path, 'w') as f: json.dump(cfg, f, indent=2)
 " 2>/dev/null
 
-        # Also clear any stale agent override from plugin settings
-        echo '{}' > "$PLUGIN_DIR/settings.json"
+        # Clear stale agent overrides but preserve hooks config
+        if [ -f "$PLUGIN_DIR/settings.json" ]; then
+            python3 -c "
+import json
+path = '$PLUGIN_DIR/settings.json'
+with open(path) as f: cfg = json.load(f)
+cfg.pop('agent', None)
+with open(path, 'w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+        fi
 
         echo -e "  ${DIM}Bridge MCP registered. Settings cleared.${RESET}"
 
@@ -479,7 +493,8 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
              claude --plugin-dir '$PLUGIN_DIR' \
                --agent hub \
                --dangerously-skip-permissions \
-               --dangerously-load-development-channels server:omt-bridge; \
+               --dangerously-load-development-channels server:omt-bridge \
+               $CONTINUE_FLAG; \
              echo 'Hub stopped. Press any key...'; read -n1"
 
         # Run bridge health check + registration in the background
@@ -543,11 +558,19 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
 }
 
 hub_add() {
-    local PROJECT_DIR="$1"
-    shift 2>/dev/null
+    local CONTINUE_FLAG=""
+    local PROJECT_DIR=""
+
+    # Parse args — support -c flag in any position
+    for arg in "$@"; do
+        case "$arg" in
+            -c|--continue) CONTINUE_FLAG="--continue" ;;
+            *)             [ -z "$PROJECT_DIR" ] && PROJECT_DIR="$arg" ;;
+        esac
+    done
 
     if [ -z "$PROJECT_DIR" ]; then
-        echo -e "${RED}Usage: omt hub add <project-directory>${RESET}"
+        echo -e "${RED}Usage: omt hub add <project-directory> [-c]${RESET}"
         exit 1
     fi
 
@@ -603,7 +626,8 @@ with open(path, 'w') as f: json.dump(cfg, f, indent=2)
          claude --plugin-dir '$PLUGIN_DIR' \
            --agent sisyphus \
            --dangerously-skip-permissions \
-           --dangerously-load-development-channels server:omt-bridge; \
+           --dangerously-load-development-channels server:omt-bridge \
+           $CONTINUE_FLAG; \
          echo 'Session ended. Press any key...'; read -n1"
 
     # Auto-accept the interactive prompts (trust + channel warning)
@@ -773,7 +797,7 @@ hub_logs() {
 hub_cmd() {
     case "${1:-status}" in
         init)       shift; hub_init "$@" ;;
-        start)      hub_start ;;
+        start)      shift; hub_start "$@" ;;
         add)        shift; hub_add "$@" ;;
         remove|rm)  shift; hub_remove "$@" ;;
         list|ls)    hub_list ;;
@@ -805,8 +829,8 @@ if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  omt hub init                    Configure hub (interactive)"
     echo "  omt hub init --telegram --token <t> --chat-id <id>"
     echo "  omt hub init --slack --token <xoxb> --app-token <xapp> --channel-id <C>"
-    echo "  omt hub start                    Start router + hub session"
-    echo "  omt hub add <dir>                Add a project session"
+    echo "  omt hub start [-c]               Start router + hub session (-c to continue)"
+    echo "  omt hub add <dir> [-c]           Add a project session (-c to continue)"
     echo "  omt hub remove <name>            Stop a project session"
     echo "  omt hub list                     List active sessions"
     echo "  omt hub status                   Overview"

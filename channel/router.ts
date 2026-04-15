@@ -110,8 +110,10 @@ async function loadAdapter(platform: string): Promise<ChannelAdapter> {
 // ── Status tracking per session ────────────────────────────────────────────
 
 interface SessionStatus {
-  messageId: string | null;   // platform message ID for the editable status msg
-  lines: string[];            // accumulated status lines
+  messageId: string | null;       // platform message ID for the editable status msg
+  current: string | null;         // current action in progress (from PreToolUse)
+  done: string[];                 // completed actions (from PostToolUse)
+  startedAt: number;              // timestamp for elapsed time display
   typingInterval: ReturnType<typeof setInterval> | null;
 }
 
@@ -120,7 +122,13 @@ const sessionStatus = new Map<string, SessionStatus>();
 function getOrCreateStatus(name: string): SessionStatus {
   let status = sessionStatus.get(name);
   if (!status) {
-    status = { messageId: null, lines: [], typingInterval: null };
+    status = {
+      messageId: null,
+      current: null,
+      done: [],
+      startedAt: Date.now(),
+      typingInterval: null,
+    };
     sessionStatus.set(name, status);
   }
   return status;
@@ -132,6 +140,33 @@ function clearSessionStatus(name: string): void {
     if (status.typingInterval) clearInterval(status.typingInterval);
     sessionStatus.delete(name);
   }
+}
+
+function formatStatus(status: SessionStatus): string {
+  const elapsed = Math.round((Date.now() - status.startedAt) / 1000);
+  const elapsedStr =
+    elapsed >= 60
+      ? `${Math.floor(elapsed / 60)}m${String(elapsed % 60).padStart(2, "0")}s`
+      : `${elapsed}s`;
+
+  const lines: string[] = [`_Working... (${elapsedStr})_`];
+
+  // Show completed items (cap at 8 most recent to keep message compact)
+  const maxDone = 8;
+  const doneSlice = status.done.slice(-maxDone);
+  if (status.done.length > maxDone) {
+    lines.push(`  _...${status.done.length - maxDone} earlier steps_`);
+  }
+  for (const item of doneSlice) {
+    lines.push(`  ✓ ${item}`);
+  }
+
+  // Current action at bottom (most visible in chat)
+  if (status.current) {
+    lines.push(`⏳ ${status.current}`);
+  }
+
+  return lines.join("\n");
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -174,9 +209,9 @@ adapter.onMessage((message: InboundMessage) => {
     adapter.sendTypingIndicator(session.threadId).catch(() => {});
   }
 
-  // Send "Working..." status message
+  // Send initial status message with elapsed timer
   if (adapter.sendStatusMessage && !status.messageId) {
-    adapter.sendStatusMessage(session.threadId, "_Working..._")
+    adapter.sendStatusMessage(session.threadId, formatStatus(status))
       .then((msgId) => {
         status.messageId = msgId;
       })
@@ -401,12 +436,18 @@ Bun.serve({
     }
 
     // ── Status update from hooks → adapter ──────────────────────────
+    //
+    // Protocol: { sessionName, text, type }
+    //   type "current" — action in progress (shown with ⏳ at bottom)
+    //   type "done"    — action completed (shown with ✓ in list)
+    //   type "stop"    — turn ended, clean up status message
 
     if (method === "POST" && url.pathname === "/status") {
       const body = await req.json();
-      const { sessionName, text: statusText } = body as {
+      const { sessionName, text: statusText, type: statusType } = body as {
         sessionName: string;
         text: string;
+        type?: string;
       };
 
       const session = registry.sessions[sessionName];
@@ -415,16 +456,30 @@ Bun.serve({
       }
 
       const status = getOrCreateStatus(sessionName);
-      status.lines.push(statusText);
 
-      // Format the status message: "Working..." + accumulated lines
-      const formatted = "_Working..._\n" + status.lines.map((l) => `  ${l}`).join("\n");
+      if (statusType === "stop") {
+        // Turn complete — clean up status message
+        if (status.messageId && adapter.deleteStatusMessage) {
+          adapter.deleteStatusMessage(session.threadId, status.messageId).catch(() => {});
+        }
+        clearSessionStatus(sessionName);
+        return Response.json({ status: "cleared" });
+      }
+
+      if (statusType === "current") {
+        // New current action (from PreToolUse / SubagentStart)
+        status.current = statusText;
+      } else {
+        // "done" or legacy (no type) — completed action
+        status.current = null;
+        status.done.push(statusText);
+      }
+
+      const formatted = formatStatus(status);
 
       if (status.messageId && adapter.updateStatusMessage) {
-        // Edit existing status message
         adapter.updateStatusMessage(session.threadId, status.messageId, formatted).catch(() => {});
       } else if (adapter.sendStatusMessage) {
-        // First status update — send a new message
         adapter.sendStatusMessage(session.threadId, formatted)
           .then((msgId) => {
             status.messageId = msgId;

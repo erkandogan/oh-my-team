@@ -11,11 +11,91 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": { "tool_name": "Read" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Edit" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Write" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Bash" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Grep" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Glob" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Agent" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Skill" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
-        "matcher": {
-          "tool_name": "Agent"
-        },
+        "matcher": { "tool_name": "Read" },
         "hooks": [
           {
             "type": "command",
@@ -25,9 +105,7 @@
         ]
       },
       {
-        "matcher": {
-          "tool_name": "TaskCreate"
-        },
+        "matcher": { "tool_name": "Edit" },
         "hooks": [
           {
             "type": "command",
@@ -37,9 +115,7 @@
         ]
       },
       {
-        "matcher": {
-          "tool_name": "TaskUpdate"
-        },
+        "matcher": { "tool_name": "Write" },
         "hooks": [
           {
             "type": "command",
@@ -49,9 +125,100 @@
         ]
       },
       {
-        "matcher": {
-          "tool_name": "Skill"
-        },
+        "matcher": { "tool_name": "Bash" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Grep" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Glob" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Agent" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "TaskCreate" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "TaskUpdate" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": { "tool_name": "Skill" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -z \"$ROUTER_URL\" ] && exit 0; bash \"$OMT_PLUGIN_DIR/hooks/status-hook.sh\"'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
         "hooks": [
           {
             "type": "command",
