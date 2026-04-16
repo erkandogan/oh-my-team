@@ -12,6 +12,7 @@
  */
 
 import path from "node:path";
+import type { ServerWebSocket } from "bun";
 
 // ── Shared types ──────────────────────────────────────────────────────────
 
@@ -19,6 +20,18 @@ import path from "node:path";
  *  owns the authoritative type; we only read session.path here. */
 interface RegistryView {
   sessions: Record<string, { path: string }>;
+}
+
+/** Events pushed to dashboard clients over /ws/events. Keep flat + JSON-safe. */
+export type DashboardEvent =
+  | { type: "session.registered"; name: string; path: string; threadId: string; bridgePort: number; threadDisplayName: string; startedAt: string }
+  | { type: "session.removed"; name: string }
+  | { type: "session.status"; name: string; current: string | null; done: string[]; elapsedMs: number }
+  | { type: "session.status.cleared"; name: string }
+  | { type: "router.log"; line: string };
+
+interface DashboardWsData {
+  kind: "events";
 }
 
 // ── Static file serving ───────────────────────────────────────────────────
@@ -162,17 +175,49 @@ async function restartSession(ctx: DashboardContext, name: string): Promise<Resp
 
 // ── Router entrypoint ─────────────────────────────────────────────────────
 
+// ── Live event broadcast ──────────────────────────────────────────────────
+
+/** Active dashboard clients listening on /ws/events. Broadcasts are O(n)
+ *  over this set, which is fine for localhost with a handful of tabs open. */
+const eventSubscribers = new Set<ServerWebSocket<DashboardWsData>>();
+
 /**
- * Handle a request destined for the dashboard. Returns null when the URL
- * doesn't match any dashboard route — the caller should fall through to
- * the next handler.
+ * Push an event to every connected dashboard client. Serialization is
+ * lazy — only done once even with many subscribers. Slow / disconnected
+ * sockets are removed on next failed send rather than awaited, so one
+ * stuck client can't block the rest.
+ */
+export function broadcastEvent(event: DashboardEvent): void {
+  if (eventSubscribers.size === 0) return;
+  const payload = JSON.stringify(event);
+  for (const ws of eventSubscribers) {
+    try {
+      ws.send(payload);
+    } catch {
+      eventSubscribers.delete(ws);
+    }
+  }
+}
+
+// ── Router entrypoint ─────────────────────────────────────────────────────
+
+/**
+ * Handle a request destined for the dashboard. Returns a Response for
+ * HTTP routes, the string "upgrade" when the request is a WebSocket that
+ * should be upgraded by the caller, or null when no dashboard route
+ * matched (caller should fall through).
  */
 export async function handleDashboardRequest(
   req: Request,
   ctx: DashboardContext
-): Promise<Response | null> {
+): Promise<Response | "upgrade" | null> {
   const url = new URL(req.url);
   const method = req.method;
+
+  // WebSocket upgrade request — the router performs the actual upgrade.
+  if (url.pathname === "/ws/events") {
+    return "upgrade";
+  }
 
   // Static files / SPA entry
   if (method === "GET" && url.pathname.startsWith("/dashboard")) {
@@ -195,3 +240,23 @@ export async function handleDashboardRequest(
 
   return null;
 }
+
+// ── WebSocket handlers (wired into Bun.serve's `websocket` option) ─────────
+
+/** Handlers for the shared websocket. Branches on ws.data.kind so multiple
+ *  WS endpoints can share the same Bun.serve instance. */
+export const dashboardWebSocketHandlers = {
+  open(ws: ServerWebSocket<DashboardWsData>) {
+    if (ws.data.kind === "events") {
+      eventSubscribers.add(ws);
+    }
+  },
+  message(_ws: ServerWebSocket<DashboardWsData>, _msg: string | Buffer) {
+    // Clients don't need to send anything yet. Future: input to terminal.
+  },
+  close(ws: ServerWebSocket<DashboardWsData>) {
+    if (ws.data.kind === "events") {
+      eventSubscribers.delete(ws);
+    }
+  },
+} as const;
