@@ -1,0 +1,570 @@
+/*
+ * Oh My Team — Dashboard styles
+ *
+ * Dark theme matching the landing page (#0A0A0A bg, #00dcd0 accent).
+ * System fonts only — no external font loads for offline-friendly,
+ * zero-dependency UI.
+ */
+
+:root {
+  /* Palette */
+  --bg: #0a0a0a;
+  --bg-raised: #111111;
+  --bg-elev: #161616;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --fg: #f2f2f2;
+  --fg-muted: rgba(255, 255, 255, 0.55);
+  --fg-subtle: rgba(255, 255, 255, 0.35);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --accent: #00dcd0;
+  --accent-dim: rgba(0, 220, 208, 0.12);
+  --danger: #ff5c5c;
+  --danger-dim: rgba(255, 92, 92, 0.14);
+  --ok: #5cd98a;
+  --warn: #ffcc66;
+
+  /* Typography */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", Menlo,
+    Consolas, monospace;
+
+  /* Layout */
+  --topbar-h: 52px;
+  --sidebar-w: 260px;
+  --radius: 6px;
+  --radius-lg: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+/* ── App shell ──────────────────────────────────────────────────── */
+
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: var(--topbar-h) 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "sidebar main";
+  height: 100vh;
+}
+
+/* ── Top bar ────────────────────────────────────────────────────── */
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand img {
+  display: block;
+}
+
+.brand-name {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 16px;
+}
+
+.brand-name .accent {
+  color: var(--accent);
+}
+
+.brand-sub {
+  color: var(--fg-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.status-group {
+  display: flex;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  transition: background 150ms ease;
+}
+
+.chip[data-state="ok"] .dot {
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(92, 217, 138, 0.5);
+}
+.chip[data-state="warn"] .dot {
+  background: var(--warn);
+}
+.chip[data-state="down"] .dot {
+  background: var(--danger);
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+
+.sidebar {
+  grid-area: sidebar;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 16px 18px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--fg-subtle);
+}
+
+.sidebar-count {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sessions {
+  padding: 0 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sessions-empty {
+  padding: 12px 12px;
+  color: var(--fg-muted);
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.session-item:hover {
+  background: var(--bg-hover);
+}
+
+.session-item.is-active {
+  background: var(--accent-dim);
+}
+
+.session-item .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  flex-shrink: 0;
+}
+
+.session-item[data-state="working"] .dot {
+  background: var(--ok);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.session-item[data-state="idle"] .dot {
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(0, 220, 208, 0.4);
+}
+
+.session-item[data-state="stopped"] .dot {
+  background: var(--fg-subtle);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+
+.session-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-item-name {
+  display: block;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item-path {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Main area ──────────────────────────────────────────────────── */
+
+.main {
+  grid-area: main;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.main-empty {
+  margin: auto;
+  text-align: center;
+  max-width: 420px;
+  padding: 40px 20px;
+  color: var(--fg-muted);
+}
+
+.empty-mascot {
+  opacity: 0.35;
+  margin-bottom: 16px;
+}
+
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 6px;
+}
+
+.empty-body {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+.empty-body code {
+  font-size: 12px;
+}
+
+/* ── Session view ───────────────────────────────────────────────── */
+
+.session-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 12px;
+  gap: 16px;
+}
+
+.session-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.session-path {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.session-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+  transition: all 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--fg-subtle);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-dim);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 10px 14px;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  color: var(--fg-muted);
+  transition: all 120ms ease;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--fg);
+}
+
+.tab.is-active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.tab-panels {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel {
+  display: none;
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px;
+}
+
+.panel.is-active {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-hint {
+  color: var(--fg-subtle);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px;
+}
+
+/* Activity feed */
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  animation: slide-in 180ms ease-out;
+}
+
+.activity-item .icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.activity-item[data-state="current"] .icon {
+  color: var(--accent);
+}
+.activity-item[data-state="done"] .icon {
+  color: var(--ok);
+}
+
+.activity-item code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--fg-muted);
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Logs */
+
+.logs {
+  flex: 1;
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+  overflow: auto;
+  white-space: pre;
+}
+
+/* Terminal */
+
+.terminal-wrap {
+  flex: 1;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+  min-height: 300px;
+}
+
+/* xterm.js wrapper styles tightened up here when we wire it up. */
+
+/* Info */
+
+.info {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 24px;
+  font-size: 13px;
+}
+
+.info > div {
+  display: contents;
+}
+
+.info dt {
+  color: var(--fg-subtle);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  align-self: center;
+}
+
+.info dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  word-break: break-all;
+}
+
+/* Scrollbar polish */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+::selection {
+  background: rgba(0, 220, 208, 0.3);
+  color: white;
+}

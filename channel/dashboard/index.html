@@ -4,10 +4,107 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Oh My Team Dashboard</title>
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="mascot.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="app.css" />
   </head>
   <body>
-    <!-- Placeholder. Real shell lands in the HTML commit. -->
-    <h1>Oh My Team Dashboard</h1>
-    <p>Coming online...</p>
+    <div class="app">
+      <!-- ── Top bar ──────────────────────────────────────────────── -->
+      <header class="topbar">
+        <div class="brand">
+          <img src="mascot.svg" alt="" width="28" height="28" />
+          <span class="brand-name">oh<span class="accent">my</span>team</span>
+          <span class="brand-sub">dashboard</span>
+        </div>
+
+        <div class="status-group">
+          <div class="chip" data-chip="platform">
+            <span class="dot"></span>
+            <span class="chip-label">…</span>
+          </div>
+          <div class="chip" data-chip="router">
+            <span class="dot"></span>
+            <span class="chip-label">router</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- ── Sidebar ───────────────────────────────────────────────── -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Sessions</span>
+          <span class="sidebar-count" data-slot="session-count">0</span>
+        </div>
+
+        <div class="sessions" data-slot="sessions">
+          <div class="sessions-empty" data-slot="sessions-empty">
+            <p class="empty-title">No sessions yet</p>
+            <p class="empty-body">
+              Start one with <code>omt hub add &lt;path&gt;</code> or send
+              <code>start ~/project</code> in your messaging app.
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ── Main content ──────────────────────────────────────────── -->
+      <main class="main">
+        <div class="main-empty" data-slot="main-empty">
+          <img src="mascot.svg" alt="" width="64" height="64" class="empty-mascot" />
+          <p class="empty-title">Select a session</p>
+          <p class="empty-body">Pick a session from the left to see live activity, open its terminal, and tail its logs.</p>
+        </div>
+
+        <section class="session-view" data-slot="session-view" hidden>
+          <div class="session-header">
+            <div>
+              <h1 class="session-name" data-slot="session-name">—</h1>
+              <p class="session-path" data-slot="session-path">—</p>
+            </div>
+            <div class="session-actions">
+              <button class="btn" data-action="restart" disabled>Restart</button>
+              <button class="btn btn-danger" data-action="stop" disabled>Stop</button>
+            </div>
+          </div>
+
+          <nav class="tabs" role="tablist">
+            <button class="tab is-active" role="tab" data-tab="activity">Activity</button>
+            <button class="tab" role="tab" data-tab="terminal">Terminal</button>
+            <button class="tab" role="tab" data-tab="logs">Logs</button>
+            <button class="tab" role="tab" data-tab="info">Info</button>
+          </nav>
+
+          <div class="tab-panels">
+            <section class="panel is-active" data-panel="activity">
+              <div class="activity" data-slot="activity">
+                <p class="panel-hint">Waiting for activity…</p>
+              </div>
+            </section>
+
+            <section class="panel" data-panel="terminal">
+              <div class="terminal-wrap" data-slot="terminal">
+                <p class="panel-hint">Terminal loads on tab open.</p>
+              </div>
+            </section>
+
+            <section class="panel" data-panel="logs">
+              <pre class="logs" data-slot="logs">loading…</pre>
+            </section>
+
+            <section class="panel" data-panel="info">
+              <dl class="info">
+                <div><dt>Thread</dt><dd data-slot="info-thread">—</dd></div>
+                <div><dt>Bridge port</dt><dd data-slot="info-port">—</dd></div>
+                <div><dt>Path</dt><dd data-slot="info-path">—</dd></div>
+                <div><dt>Started</dt><dd data-slot="info-started">—</dd></div>
+              </dl>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js" type="module"></script>
   </body>
 </html>
