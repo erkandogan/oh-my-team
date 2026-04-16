@@ -324,25 +324,53 @@ Bun.serve({
         );
       }
 
-      if (registry.sessions[name] || pendingRegistrations.has(name)) {
+      // ── Re-registration: session exists in registry from a previous run ──
+      // When hub_start restores sessions after a stop, the registry still
+      // has the old entries (threadId, displayName). We update the mutable
+      // fields (bridgePort, startedAt, path) and reopen the thread.
+      const existing = registry.sessions[name];
+      if (existing) {
+        // Reopen the thread in the adapter (e.g. reopenForumTopic on Telegram)
+        if (adapter.reopenThread) {
+          try {
+            await adapter.reopenThread(existing.threadId, name);
+          } catch (err) {
+            process.stderr.write(
+              `omt-router: Failed to reopen thread for "${name}": ${err}\n`
+            );
+          }
+        }
+
+        // Update mutable fields — the bridge port changes on restart
+        existing.bridgePort = bridgePort;
+        existing.startedAt = new Date().toISOString();
+        existing.path = path;
+        saveRegistry(registry);
+
+        process.stderr.write(
+          `omt-router: Re-registered session "${name}" → port ${bridgePort} (reused thread ${existing.threadId})\n`
+        );
+
+        return Response.json(existing, { status: 200 });
+      }
+
+      if (pendingRegistrations.has(name)) {
         return Response.json(
-          { error: `session "${name}" already exists or is being created` },
+          { error: `session "${name}" is being created` },
           { status: 409 }
         );
       }
 
-      // Lock this name to prevent race conditions
+      // ── New registration: create a fresh thread ──────────────────────
       pendingRegistrations.add(name);
 
       let threadId: string;
       let threadDisplayName: string;
 
       if (isHub) {
-        // Hub session listens on the General topic — no new thread needed
         threadId = "__general__";
         threadDisplayName = "General (Hub)";
       } else {
-        // Create a thread in the adapter for this session
         let threadInfo;
         try {
           threadInfo = await adapter.createThread(name);
