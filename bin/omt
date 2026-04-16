@@ -393,11 +393,151 @@ EOF
     fi
 }
 
+hub_restore_sessions() {
+    local REGISTRY_FILE="$OMT_DIR/hub-registry.json"
+    if [ ! -f "$REGISTRY_FILE" ]; then
+        return
+    fi
+
+    # Read session names, paths, and threadIds from registry (excluding "hub")
+    local restore_list=$(python3 -c "
+import json, sys, os
+try:
+    with open('$REGISTRY_FILE') as f:
+        data = json.load(f)
+    for name, info in data.get('sessions', {}).items():
+        if name == 'hub':
+            continue
+        path = info.get('path', '')
+        if path and os.path.isdir(path):
+            print(f'{name}\t{path}')
+        else:
+            print(f'STALE: {name} ({path})', file=sys.stderr)
+except Exception as e:
+    print(f'Error reading registry: {e}', file=sys.stderr)
+" 2>/dev/null)
+
+    if [ -z "$restore_list" ]; then
+        return
+    fi
+
+    echo ""
+    echo -e "${CYAN}Restoring previous sessions...${RESET}"
+
+    while IFS=$'\t' read -r name proj_path; do
+        echo -e "  ${DIM}Restoring $name ($proj_path)...${RESET}"
+
+        # Allocate a new bridge port (old one might be taken after restart)
+        local PORT=$(cat "$NEXT_BRIDGE_PORT_FILE" 2>/dev/null || echo "8802")
+        echo "$((PORT + 1))" > "$NEXT_BRIDGE_PORT_FILE"
+
+        # Ensure bridge MCP is registered for this project
+        local BRIDGE_TS="$PLUGIN_DIR/channel/bridge.ts"
+        local PROJECT_MCP="$proj_path/.mcp.json"
+        if [ ! -f "$PROJECT_MCP" ] || ! grep -q "omt-bridge" "$PROJECT_MCP" 2>/dev/null; then
+            python3 -c "
+import json, os
+path = '$PROJECT_MCP'
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f: cfg = json.load(f)
+    except: pass
+cfg.setdefault('mcpServers', {})['omt-bridge'] = {
+    'command': 'bun',
+    'args': ['run', '$BRIDGE_TS']
+}
+with open(path, 'w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+        fi
+
+        # Write session env for hooks
+        cat > "$proj_path/.omt-env" << ENVEOF
+ROUTER_URL=http://localhost:$ROUTER_PORT
+SESSION_NAME=$name
+ENVEOF
+
+        # Start Claude session with --continue to resume conversation
+        tmux new-session -d -s "omt-$name" \
+            "cd '$proj_path' && \
+             BRIDGE_PORT=$PORT \
+             ROUTER_URL=http://localhost:$ROUTER_PORT \
+             SESSION_NAME=$name \
+             OMT_PLUGIN_DIR='$PLUGIN_DIR' \
+             claude --plugin-dir '$PLUGIN_DIR' \
+               --agent sisyphus \
+               --dangerously-skip-permissions \
+               --dangerously-load-development-channels server:omt-bridge \
+               --continue; \
+             echo 'Session ended. Press any key...'; read -n1"
+
+        # Auto-accept trust/channel prompts
+        sleep 2
+        tmux send-keys -t "omt-$name" Enter 2>/dev/null
+        sleep 1
+        tmux send-keys -t "omt-$name" Enter 2>/dev/null
+        sleep 1
+        tmux send-keys -t "omt-$name" Enter 2>/dev/null
+
+        # Wait for bridge to be ready, then re-register with router
+        (
+            local retries=0
+            while ! curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; do
+                sleep 1
+                retries=$((retries + 1))
+                if [ $retries -gt 60 ]; then
+                    echo -e "  ${RED}Failed to restore '$name' — bridge timeout.${RESET}" >&2
+                    break
+                fi
+                # Extra Enter in case of lingering prompts
+                [ $((retries % 10)) -eq 0 ] && tmux send-keys -t "omt-$name" Enter 2>/dev/null
+            done
+
+            if curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; then
+                # Re-register with router (reuses existing threadId from registry)
+                local result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"name\": \"$name\", \"path\": \"$proj_path\", \"bridgePort\": $PORT}")
+                if echo "$result" | grep -q '"error"' 2>/dev/null; then
+                    echo -e "  ${RED}Registration failed for '$name'.${RESET}" >&2
+                else
+                    echo -e "  ${GREEN}Restored: $name (port $PORT)${RESET}"
+                fi
+            fi
+        ) &
+    done <<< "$restore_list"
+
+    # Wait for all background restore jobs to finish
+    wait
+
+    # Clean stale entries from registry (paths that no longer exist)
+    python3 -c "
+import json, os
+path = '$OMT_DIR/hub-registry.json'
+try:
+    with open(path) as f: data = json.load(f)
+    stale = [n for n, info in data.get('sessions', {}).items()
+             if n != 'hub' and not os.path.isdir(info.get('path', ''))]
+    if stale:
+        for n in stale: del data['sessions'][n]
+        with open(path, 'w') as f: json.dump(data, f, indent=2)
+except: pass
+" 2>/dev/null
+}
+
 hub_start() {
     local CONTINUE_FLAG=""
     if [ "$1" = "-c" ] || [ "$1" = "--continue" ]; then
         CONTINUE_FLAG="--continue"
         shift
+    fi
+
+    # Auto-continue: if the hub was previously initialized, resume the
+    # conversation instead of starting fresh (unless user passed -c explicitly).
+    local HUB_INIT_FLAG="$OMT_DIR/.hub-initialized"
+    if [ -z "$CONTINUE_FLAG" ] && [ -f "$HUB_INIT_FLAG" ]; then
+        CONTINUE_FLAG="--continue"
+        echo -e "${DIM}Resuming previous hub session...${RESET}"
     fi
 
     require_bun
@@ -542,6 +682,9 @@ ENVEOF
         fi
     fi
 
+    # Mark hub as initialized so future starts auto-continue
+    touch "$HUB_INIT_FLAG"
+
     local platform=$(get_platform)
     echo ""
     echo -e "${GREEN}${BOLD}Oh My Team Hub is running.${RESET}"
@@ -561,6 +704,9 @@ ENVEOF
     else
         echo -e "  From Telegram: send \"start ~/projects/my-app\" in General"
     fi
+
+    # ── Restore previous sessions ──────────────────────────────────
+    hub_restore_sessions
 }
 
 hub_add() {
