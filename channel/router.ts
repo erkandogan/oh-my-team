@@ -116,12 +116,22 @@ async function loadAdapter(platform: string): Promise<ChannelAdapter> {
 
 // ── Status tracking per session ────────────────────────────────────────────
 
+/** Minimum interval between Telegram/Slack API calls for status edits.
+ *  Hooks fire on every PreToolUse + PostToolUse — 10 bash calls produce
+ *  ~20 POSTs within seconds. Without debouncing we'd hit Telegram's
+ *  20 msg/min group limit almost instantly. */
+const STATUS_DEBOUNCE_MS = 1000;
+
 interface SessionStatus {
   messageId: string | null;       // platform message ID for the editable status msg
   current: string | null;         // current action in progress (from PreToolUse)
   done: string[];                 // completed actions (from PostToolUse)
   startedAt: number;              // timestamp for elapsed time display
   typingInterval: ReturnType<typeof setInterval> | null;
+  /** Timer ID for the next debounced flush. null means no pending flush. */
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  /** Set to true when a flush is needed (data changed since last send). */
+  dirty: boolean;
 }
 
 const sessionStatus = new Map<string, SessionStatus>();
@@ -135,6 +145,8 @@ function getOrCreateStatus(name: string): SessionStatus {
       done: [],
       startedAt: Date.now(),
       typingInterval: null,
+      flushTimer: null,
+      dirty: false,
     };
     sessionStatus.set(name, status);
   }
@@ -145,6 +157,7 @@ function clearSessionStatus(name: string): void {
   const status = sessionStatus.get(name);
   if (status) {
     if (status.typingInterval) clearInterval(status.typingInterval);
+    if (status.flushTimer) clearTimeout(status.flushTimer);
     sessionStatus.delete(name);
   }
 }
@@ -268,6 +281,30 @@ adapter.onPermissionResponse((requestId: string, allow: boolean) => {
     });
   }
 });
+
+// ── Debounced status flush ─────────────────────────────────────────────────
+//
+// Instead of calling adapter.updateStatusMessage on every hook event, we
+// batch updates within STATUS_DEBOUNCE_MS. This function is the "flush":
+// it reads the current accumulated status, formats it, and sends one edit.
+
+function flushStatus(sessionName: string, threadId: string): void {
+  const status = sessionStatus.get(sessionName);
+  if (!status || !status.dirty) return;
+
+  status.flushTimer = null;
+  status.dirty = false;
+
+  const formatted = formatStatus(status);
+
+  if (status.messageId && adapter.updateStatusMessage) {
+    adapter.updateStatusMessage(threadId, status.messageId, formatted).catch(() => {});
+  } else if (adapter.sendStatusMessage) {
+    adapter.sendStatusMessage(threadId, formatted)
+      .then((msgId) => { status.messageId = msgId; })
+      .catch(() => {});
+  }
+}
 
 // ── HTTP server: API for bridges and CLI ───────────────────────────────────
 
@@ -535,29 +572,16 @@ Bun.serve({
         status.done.push(statusText);
       }
 
-      const formatted = formatStatus(status);
-
-      process.stderr.write(
-        `omt-router: /status ${sessionName} msgId=${status.messageId || 'null'} type=${statusType} text="${statusText.slice(0, 50)}"\n`
-      );
-
-      if (status.messageId && adapter.updateStatusMessage) {
-        adapter.updateStatusMessage(session.threadId, status.messageId, formatted)
-          .then(() => {
-            process.stderr.write(`omt-router: updateStatusMessage OK\n`);
-          })
-          .catch((err) => {
-            process.stderr.write(`omt-router: updateStatusMessage FAILED: ${err}\n`);
-          });
-      } else if (adapter.sendStatusMessage) {
-        adapter.sendStatusMessage(session.threadId, formatted)
-          .then((msgId) => {
-            status.messageId = msgId;
-            process.stderr.write(`omt-router: sendStatusMessage OK msgId=${msgId}\n`);
-          })
-          .catch((err) => {
-            process.stderr.write(`omt-router: sendStatusMessage FAILED: ${err}\n`);
-          });
+      // Mark status as dirty and schedule a debounced flush. Instead of
+      // calling updateStatusMessage on every single hook event (~20 calls
+      // for 10 bash commands), we batch updates within STATUS_DEBOUNCE_MS
+      // and send one consolidated edit. This keeps us well under Telegram's
+      // 20 msg/min group limit.
+      status.dirty = true;
+      if (!status.flushTimer) {
+        status.flushTimer = setTimeout(() => {
+          flushStatus(sessionName, session.threadId);
+        }, STATUS_DEBOUNCE_MS);
       }
 
       return Response.json({ status: "updated" });
