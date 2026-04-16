@@ -21,6 +21,7 @@ import type {
   InboundMessage,
 } from "./adapters/types";
 import { removeAttachmentDir } from "./adapters/media";
+import { handleDashboardRequest } from "./dashboard-server";
 import path from "node:path";
 
 // ── Configuration ──────────────────────────────────────────────────────────
@@ -624,6 +625,17 @@ Bun.serve({
         );
       }
     }
+
+    // ── Dashboard (UI + REST API) ────────────────────────────────────
+    // Delegates to dashboard-server.ts. Returns a Response if the URL
+    // matched a dashboard route, null otherwise.
+    const dashResponse = await handleDashboardRequest(req, {
+      registry,
+      platform: config.platform,
+      routerPort: ROUTER_PORT,
+      hubDir: OMT_HUB_DIR,
+    });
+    if (dashResponse) return dashResponse;
 
     // ── 404 ──────────────────────────────────────────────────────────
 

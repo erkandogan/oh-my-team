@@ -39,6 +39,8 @@
     "channel/bridge.ts",
     "channel/bridge.mcp.json",
     "channel/router.ts",
+    "channel/dashboard-server.ts",
+    "channel/dashboard/",
     "channel/adapters/",
     "channel/slack-manifest.yml",
     "channel/package.json",
