@@ -776,6 +776,11 @@ hub_attach() {
 }
 
 hub_stop() {
+    local CLEAN=false
+    if [ "$1" = "--clean" ] || [ "$1" = "--force" ]; then
+        CLEAN=true
+    fi
+
     echo -e "${YELLOW}Stopping all sessions...${RESET}"
 
     # Stop all project sessions
@@ -783,16 +788,18 @@ hub_stop() {
     if [ -n "$sessions" ]; then
         while IFS= read -r s; do
             local name="${s#omt-}"
-            # Clean up .omt-env before removing session
-            local session_path=$(curl -s "http://localhost:$ROUTER_PORT/sessions/$name" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
-            [ -n "$session_path" ] && rm -f "$session_path/.omt-env" 2>/dev/null
-            curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$name" > /dev/null 2>&1
+            if [ "$CLEAN" = true ]; then
+                # Destructive: close threads and unregister
+                local session_path=$(curl -s "http://localhost:$ROUTER_PORT/sessions/$name" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+                [ -n "$session_path" ] && rm -f "$session_path/.omt-env" 2>/dev/null
+                curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$name" > /dev/null 2>&1
+            fi
             tmux kill-session -t "$s" 2>/dev/null
             echo -e "  ${GREEN}Stopped: ${s#omt-}${RESET}"
         done <<< "$sessions"
     fi
 
-    # Clean up hub .omt-env
+    # Clean up .omt-env files (stale ports)
     rm -f "$HOME/.omt-env" 2>/dev/null
 
     # Stop hub
@@ -801,13 +808,19 @@ hub_stop() {
         echo -e "  ${GREEN}Stopped: hub${RESET}"
     fi
 
-    # Stop router
+    # Stop router (registry file on disk is preserved unless --clean)
     if tmux has-session -t "omt-router" 2>/dev/null; then
         tmux kill-session -t "omt-router"
         echo -e "  ${GREEN}Stopped: router${RESET}"
     fi
 
-    echo -e "${GREEN}${BOLD}Hub shut down.${RESET}"
+    if [ "$CLEAN" = true ]; then
+        rm -f "$OMT_DIR/hub-registry.json" 2>/dev/null
+        rm -f "$OMT_DIR/.hub-initialized" 2>/dev/null
+        echo -e "${GREEN}${BOLD}Hub shut down and cleaned. Next start will be fresh.${RESET}"
+    else
+        echo -e "${GREEN}${BOLD}Hub shut down. Sessions preserved — run 'omt hub start' to resume.${RESET}"
+    fi
 }
 
 hub_logs() {
@@ -827,7 +840,7 @@ hub_cmd() {
         list|ls)    hub_list ;;
         status)     hub_status ;;
         attach|a)   shift; hub_attach "$@" ;;
-        stop)       hub_stop ;;
+        stop)       shift; hub_stop "$@" ;;
         logs)       hub_logs ;;
         *)          echo -e "${RED}Unknown hub command: $1${RESET}"; echo "Run: omt help"; exit 1 ;;
     esac
@@ -859,7 +872,8 @@ if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  omt hub list                     List active sessions"
     echo "  omt hub status                   Overview"
     echo "  omt hub attach [name]            Attach to hub or session"
-    echo "  omt hub stop                     Stop everything"
+    echo "  omt hub stop                     Stop hub (preserves sessions for resume)"
+    echo "  omt hub stop --clean             Stop hub and close all threads"
     echo "  omt hub logs                     View router logs"
     exit 0
 fi
