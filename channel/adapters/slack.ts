@@ -519,7 +519,9 @@ export class SlackAdapter implements ChannelAdapter {
 
   private async api(
     method: string,
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
+    /** Internal — prevents infinite retry loops. */
+    _retried = false
   ): Promise<SlackApiResponse> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.botToken}`,
@@ -542,7 +544,20 @@ export class SlackAdapter implements ChannelAdapter {
       body,
     });
 
-    return response.json() as Promise<SlackApiResponse>;
+    const json = await response.json() as SlackApiResponse;
+
+    // Slack rate limit: { ok: false, error: "ratelimited" } with a
+    // Retry-After header (seconds). Retry once after waiting.
+    if (!json.ok && json.error === "ratelimited" && !_retried) {
+      const retryAfter = Number(response.headers.get("Retry-After")) || 1;
+      process.stderr.write(
+        `omt-slack: rate limited on ${method}, retrying in ${retryAfter}s\n`
+      );
+      await this.sleep(retryAfter * 1000);
+      return this.api(method, params, true);
+    }
+
+    return json;
   }
 
   private async getUserName(userId: string): Promise<string> {

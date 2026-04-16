@@ -552,7 +552,9 @@ export class TelegramAdapter implements ChannelAdapter {
 
   private async api(
     method: string,
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
+    /** Internal — prevents infinite retry loops. */
+    _retried = false
   ): Promise<any> {
     const url = `${this.apiBase}/${method}`;
 
@@ -562,7 +564,21 @@ export class TelegramAdapter implements ChannelAdapter {
       body: params ? JSON.stringify(params) : undefined,
     });
 
-    return response.json();
+    const json = await response.json();
+
+    // Telegram rate limit: 429 Too Many Requests with a `retry_after` field.
+    // Retry once after waiting the specified duration. If the retry also 429s,
+    // return the error response so the caller can decide what to do.
+    if (json.error_code === 429 && !_retried) {
+      const retryAfter = json.parameters?.retry_after || 1;
+      process.stderr.write(
+        `omt-telegram: rate limited on ${method}, retrying in ${retryAfter}s\n`
+      );
+      await this.sleep(retryAfter * 1000);
+      return this.api(method, params, true);
+    }
+
+    return json;
   }
 
   // ── Utilities ──────────────────────────────────────────────────────
