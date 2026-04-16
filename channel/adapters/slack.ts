@@ -397,6 +397,25 @@ export class SlackAdapter implements ChannelAdapter {
     }).catch(() => {});
   }
 
+  async reopenThread(threadId: string, sessionName: string): Promise<void> {
+    if (threadId === "__general__") return;
+
+    // Post a resume notification in the existing thread
+    await this.api("chat.postMessage", {
+      channel: this.channelId,
+      thread_ts: threadId,
+      text: `Session "${sessionName}" resumed.`,
+    }).catch(() => {});
+
+    // Re-pin the session header for easy navigation
+    await this.api("pins.add", {
+      channel: this.channelId,
+      timestamp: threadId,
+    }).catch(() => {
+      // Might already be pinned or lack scope — non-critical
+    });
+  }
+
   // ── Sending ────────────────────────────────────────────────────────
 
   async send(threadId: string, text: string): Promise<void> {

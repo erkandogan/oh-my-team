@@ -224,6 +224,25 @@ export class TelegramAdapter implements ChannelAdapter {
     });
   }
 
+  async reopenThread(threadId: string, sessionName: string): Promise<void> {
+    if (threadId === "__general__") return;
+
+    // Reopen the closed forum topic
+    await this.api("reopenForumTopic", {
+      chat_id: this.chatId,
+      message_thread_id: Number(threadId),
+    }).catch(() => {
+      // Topic might already be open — that's fine
+    });
+
+    // Send a resume notification in the topic
+    await this.api("sendMessage", {
+      chat_id: this.chatId,
+      message_thread_id: Number(threadId),
+      text: `Session "${sessionName}" resumed.`,
+    }).catch(() => {});
+  }
+
   // ── Sending ────────────────────────────────────────────────────────
 
   async send(threadId: string, text: string): Promise<void> {

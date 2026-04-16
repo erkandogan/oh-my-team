@@ -393,11 +393,151 @@ EOF
     fi
 }
 
+hub_restore_sessions() {
+    local REGISTRY_FILE="$OMT_DIR/hub-registry.json"
+    if [ ! -f "$REGISTRY_FILE" ]; then
+        return
+    fi
+
+    # Read session names, paths, and threadIds from registry (excluding "hub")
+    local restore_list=$(python3 -c "
+import json, sys, os
+try:
+    with open('$REGISTRY_FILE') as f:
+        data = json.load(f)
+    for name, info in data.get('sessions', {}).items():
+        if name == 'hub':
+            continue
+        path = info.get('path', '')
+        if path and os.path.isdir(path):
+            print(f'{name}\t{path}')
+        else:
+            print(f'STALE: {name} ({path})', file=sys.stderr)
+except Exception as e:
+    print(f'Error reading registry: {e}', file=sys.stderr)
+" 2>/dev/null)
+
+    if [ -z "$restore_list" ]; then
+        return
+    fi
+
+    echo ""
+    echo -e "${CYAN}Restoring previous sessions...${RESET}"
+
+    while IFS=$'\t' read -r name proj_path; do
+        echo -e "  ${DIM}Restoring $name ($proj_path)...${RESET}"
+
+        # Allocate a new bridge port (old one might be taken after restart)
+        local PORT=$(cat "$NEXT_BRIDGE_PORT_FILE" 2>/dev/null || echo "8802")
+        echo "$((PORT + 1))" > "$NEXT_BRIDGE_PORT_FILE"
+
+        # Ensure bridge MCP is registered for this project
+        local BRIDGE_TS="$PLUGIN_DIR/channel/bridge.ts"
+        local PROJECT_MCP="$proj_path/.mcp.json"
+        if [ ! -f "$PROJECT_MCP" ] || ! grep -q "omt-bridge" "$PROJECT_MCP" 2>/dev/null; then
+            python3 -c "
+import json, os
+path = '$PROJECT_MCP'
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f: cfg = json.load(f)
+    except: pass
+cfg.setdefault('mcpServers', {})['omt-bridge'] = {
+    'command': 'bun',
+    'args': ['run', '$BRIDGE_TS']
+}
+with open(path, 'w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+        fi
+
+        # Write session env for hooks
+        cat > "$proj_path/.omt-env" << ENVEOF
+ROUTER_URL=http://localhost:$ROUTER_PORT
+SESSION_NAME=$name
+ENVEOF
+
+        # Start Claude session with --continue to resume conversation
+        tmux new-session -d -s "omt-$name" \
+            "cd '$proj_path' && \
+             BRIDGE_PORT=$PORT \
+             ROUTER_URL=http://localhost:$ROUTER_PORT \
+             SESSION_NAME=$name \
+             OMT_PLUGIN_DIR='$PLUGIN_DIR' \
+             claude --plugin-dir '$PLUGIN_DIR' \
+               --agent sisyphus \
+               --dangerously-skip-permissions \
+               --dangerously-load-development-channels server:omt-bridge \
+               --continue; \
+             echo 'Session ended. Press any key...'; read -n1"
+
+        # Auto-accept trust/channel prompts
+        sleep 2
+        tmux send-keys -t "omt-$name" Enter 2>/dev/null
+        sleep 1
+        tmux send-keys -t "omt-$name" Enter 2>/dev/null
+        sleep 1
+        tmux send-keys -t "omt-$name" Enter 2>/dev/null
+
+        # Wait for bridge to be ready, then re-register with router
+        (
+            local retries=0
+            while ! curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; do
+                sleep 1
+                retries=$((retries + 1))
+                if [ $retries -gt 60 ]; then
+                    echo -e "  ${RED}Failed to restore '$name' — bridge timeout.${RESET}" >&2
+                    break
+                fi
+                # Extra Enter in case of lingering prompts
+                [ $((retries % 10)) -eq 0 ] && tmux send-keys -t "omt-$name" Enter 2>/dev/null
+            done
+
+            if curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; then
+                # Re-register with router (reuses existing threadId from registry)
+                local result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"name\": \"$name\", \"path\": \"$proj_path\", \"bridgePort\": $PORT}")
+                if echo "$result" | grep -q '"error"' 2>/dev/null; then
+                    echo -e "  ${RED}Registration failed for '$name'.${RESET}" >&2
+                else
+                    echo -e "  ${GREEN}Restored: $name (port $PORT)${RESET}"
+                fi
+            fi
+        ) &
+    done <<< "$restore_list"
+
+    # Wait for all background restore jobs to finish
+    wait
+
+    # Clean stale entries from registry (paths that no longer exist)
+    python3 -c "
+import json, os
+path = '$OMT_DIR/hub-registry.json'
+try:
+    with open(path) as f: data = json.load(f)
+    stale = [n for n, info in data.get('sessions', {}).items()
+             if n != 'hub' and not os.path.isdir(info.get('path', ''))]
+    if stale:
+        for n in stale: del data['sessions'][n]
+        with open(path, 'w') as f: json.dump(data, f, indent=2)
+except: pass
+" 2>/dev/null
+}
+
 hub_start() {
     local CONTINUE_FLAG=""
     if [ "$1" = "-c" ] || [ "$1" = "--continue" ]; then
         CONTINUE_FLAG="--continue"
         shift
+    fi
+
+    # Auto-continue: if the hub was previously initialized, resume the
+    # conversation instead of starting fresh (unless user passed -c explicitly).
+    local HUB_INIT_FLAG="$OMT_DIR/.hub-initialized"
+    if [ -z "$CONTINUE_FLAG" ] && [ -f "$HUB_INIT_FLAG" ]; then
+        CONTINUE_FLAG="--continue"
+        echo -e "${DIM}Resuming previous hub session...${RESET}"
     fi
 
     require_bun
@@ -484,11 +624,7 @@ ROUTER_URL=http://localhost:$ROUTER_PORT
 SESSION_NAME=hub
 ENVEOF
 
-        echo -e "${YELLOW}The hub session will open in this terminal.${RESET}"
-        echo -e "${YELLOW}You may need to accept trust/channel prompts on first run.${RESET}"
-        echo -e "${YELLOW}After it starts, press Ctrl+B then D to detach.${RESET}"
-        echo ""
-        read -p "  Press Enter to start the hub session... " _
+        echo -e "${GREEN}Starting hub session...${RESET}"
 
         tmux new-session -d -s "omt-hub" \
             "cd '$HOME' && \
@@ -503,16 +639,29 @@ ENVEOF
                $CONTINUE_FLAG; \
              echo 'Hub stopped. Press any key...'; read -n1"
 
-        # Run bridge health check + registration in the background
-        # so it auto-registers while the user handles trust prompts in tmux
-        (
-            local retries=0
-            while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
-                sleep 1
-                retries=$((retries + 1))
-                [ $retries -gt 90 ] && exit 1
-            done
-            # Register hub — retry a few times in case router is briefly busy
+        # Auto-accept trust and channel prompts (no manual interaction needed)
+        sleep 3
+        tmux send-keys -t omt-hub Enter 2>/dev/null
+        sleep 2
+        tmux send-keys -t omt-hub Enter 2>/dev/null
+
+        # Wait for bridge to be ready
+        echo -e "  ${DIM}Waiting for hub bridge...${RESET}"
+        local retries=0
+        while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
+            sleep 1
+            retries=$((retries + 1))
+            if [ $retries -gt 60 ]; then
+                echo -e "${YELLOW}Hub bridge not ready yet. You may need to accept prompts:${RESET}"
+                echo -e "  ${CYAN}omt hub attach${RESET}  (then Ctrl+B, D to detach)"
+                break
+            fi
+            # Periodically retry auto-accept in case prompts appeared late
+            [ $((retries % 10)) -eq 0 ] && tmux send-keys -t omt-hub Enter 2>/dev/null
+        done
+
+        # Register hub with the router
+        if curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; then
             local reg_retries=0
             while [ $reg_retries -lt 5 ]; do
                 local reg_result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
@@ -522,25 +671,12 @@ ENVEOF
                 reg_retries=$((reg_retries + 1))
                 sleep 1
             done
-        ) &
-
-        # Attach immediately so user can handle trust/channel prompts
-        echo -e "${GREEN}Attaching to hub session. Accept any prompts, then Ctrl+B, D to detach.${RESET}"
-        sleep 1
-        tmux attach-session -t "omt-hub"
-
-        # After detach, check if registration already happened in background
-        if curl -s "http://localhost:$ROUTER_PORT/sessions/hub" 2>/dev/null | grep -q '"threadId"'; then
-            local platform=$(get_platform)
-            if [ "$platform" = "slack" ]; then
-                echo -e "${GREEN}Hub registered. Listening on Slack channel root.${RESET}"
-            else
-                echo -e "${GREEN}Hub registered. Listening on Telegram General topic.${RESET}"
-            fi
-        else
-            echo -e "${DIM}Hub registration pending — will auto-register when bridge is ready.${RESET}"
+            echo -e "${GREEN}Hub registered.${RESET}"
         fi
     fi
+
+    # Mark hub as initialized so future starts auto-continue
+    touch "$HUB_INIT_FLAG"
 
     local platform=$(get_platform)
     echo ""
@@ -561,6 +697,9 @@ ENVEOF
     else
         echo -e "  From Telegram: send \"start ~/projects/my-app\" in General"
     fi
+
+    # ── Restore previous sessions ──────────────────────────────────
+    hub_restore_sessions
 }
 
 hub_add() {
@@ -776,6 +915,11 @@ hub_attach() {
 }
 
 hub_stop() {
+    local CLEAN=false
+    if [ "$1" = "--clean" ] || [ "$1" = "--force" ]; then
+        CLEAN=true
+    fi
+
     echo -e "${YELLOW}Stopping all sessions...${RESET}"
 
     # Stop all project sessions
@@ -783,16 +927,18 @@ hub_stop() {
     if [ -n "$sessions" ]; then
         while IFS= read -r s; do
             local name="${s#omt-}"
-            # Clean up .omt-env before removing session
-            local session_path=$(curl -s "http://localhost:$ROUTER_PORT/sessions/$name" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
-            [ -n "$session_path" ] && rm -f "$session_path/.omt-env" 2>/dev/null
-            curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$name" > /dev/null 2>&1
+            if [ "$CLEAN" = true ]; then
+                # Destructive: close threads and unregister
+                local session_path=$(curl -s "http://localhost:$ROUTER_PORT/sessions/$name" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+                [ -n "$session_path" ] && rm -f "$session_path/.omt-env" 2>/dev/null
+                curl -s -X DELETE "http://localhost:$ROUTER_PORT/sessions/$name" > /dev/null 2>&1
+            fi
             tmux kill-session -t "$s" 2>/dev/null
             echo -e "  ${GREEN}Stopped: ${s#omt-}${RESET}"
         done <<< "$sessions"
     fi
 
-    # Clean up hub .omt-env
+    # Clean up .omt-env files (stale ports)
     rm -f "$HOME/.omt-env" 2>/dev/null
 
     # Stop hub
@@ -801,13 +947,19 @@ hub_stop() {
         echo -e "  ${GREEN}Stopped: hub${RESET}"
     fi
 
-    # Stop router
+    # Stop router (registry file on disk is preserved unless --clean)
     if tmux has-session -t "omt-router" 2>/dev/null; then
         tmux kill-session -t "omt-router"
         echo -e "  ${GREEN}Stopped: router${RESET}"
     fi
 
-    echo -e "${GREEN}${BOLD}Hub shut down.${RESET}"
+    if [ "$CLEAN" = true ]; then
+        rm -f "$OMT_DIR/hub-registry.json" 2>/dev/null
+        rm -f "$OMT_DIR/.hub-initialized" 2>/dev/null
+        echo -e "${GREEN}${BOLD}Hub shut down and cleaned. Next start will be fresh.${RESET}"
+    else
+        echo -e "${GREEN}${BOLD}Hub shut down. Sessions preserved — run 'omt hub start' to resume.${RESET}"
+    fi
 }
 
 hub_logs() {
@@ -827,7 +979,7 @@ hub_cmd() {
         list|ls)    hub_list ;;
         status)     hub_status ;;
         attach|a)   shift; hub_attach "$@" ;;
-        stop)       hub_stop ;;
+        stop)       shift; hub_stop "$@" ;;
         logs)       hub_logs ;;
         *)          echo -e "${RED}Unknown hub command: $1${RESET}"; echo "Run: omt help"; exit 1 ;;
     esac
@@ -859,7 +1011,8 @@ if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  omt hub list                     List active sessions"
     echo "  omt hub status                   Overview"
     echo "  omt hub attach [name]            Attach to hub or session"
-    echo "  omt hub stop                     Stop everything"
+    echo "  omt hub stop                     Stop hub (preserves sessions for resume)"
+    echo "  omt hub stop --clean             Stop hub and close all threads"
     echo "  omt hub logs                     View router logs"
     exit 0
 fi

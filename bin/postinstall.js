@@ -17,7 +17,7 @@ console.log('\n  Oh My Team — Post-install setup\n');
 // 1. Copy plugin to ~/.oh-my-team (preserve hub config files)
 try {
     // Back up user config files before wiping
-    const CONFIG_FILES = ['hub-config.json', 'hub-registry.json', '.mcp.json', 'settings.json'];
+    const CONFIG_FILES = ['hub-config.json', 'hub-registry.json', '.mcp.json', 'settings.json', '.hub-initialized'];
     const backups = {};
     for (const f of CONFIG_FILES) {
         const p = path.join(INSTALL_DIR, f);

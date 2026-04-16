@@ -109,11 +109,20 @@ export interface ChannelAdapter {
   createThread(sessionName: string): Promise<ThreadInfo>
 
   /**
-   * Close/archive a thread when a session stops.
+   * Close/archive a thread when a session is explicitly removed.
    * Should NOT delete messages — just close or archive.
    * @param threadId - The ID returned by createThread
    */
   closeThread(threadId: string): Promise<void>
+
+  /**
+   * Reopen a previously closed thread/topic.
+   * Called during session restore after hub restart.
+   * Telegram: reopenForumTopic. Slack: post a "Session resumed" message.
+   * @param threadId - The ID previously returned by createThread
+   * @param sessionName - Used for the "resumed" notification
+   */
+  reopenThread?(threadId: string, sessionName: string): Promise<void>
 
   /**
    * Send a text message to a specific thread.
