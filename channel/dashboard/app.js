@@ -13,6 +13,7 @@ import { events } from "./lib/events.js";
 import { sessionsStore, CURRENT, IDLE } from "./lib/sessions.js";
 import { mountActivity, renderActivity } from "./lib/activity.js";
 import { mountLogs, setLogsVisible } from "./lib/logs.js";
+import { mountTerminal, openTerminal, closeTerminal } from "./lib/terminal.js";
 
 // ── DOM lookups (cached at module load) ────────────────────────────────────
 
@@ -32,12 +33,15 @@ const el = {
   infoStarted: document.querySelector('[data-slot="info-started"]'),
   activity: document.querySelector('[data-slot="activity"]'),
   logs: document.querySelector('[data-slot="logs"]'),
+  terminal: document.querySelector('[data-slot="terminal"]'),
 };
 
 // ── Feature modules ────────────────────────────────────────────────────────
 
 mountActivity(el.activity, () => selectedName);
 mountLogs(el.logs);
+// Terminal module loads xterm.js bundles lazily — fire and forget
+void mountTerminal(el.terminal);
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -143,6 +147,9 @@ function renderSelected() {
 function selectSession(name) {
   if (selectedName === name) return;
   selectedName = name;
+  // If the terminal tab was open for the previous session, disconnect so
+  // we don't keep a PTY for a session the user is no longer looking at.
+  closeTerminal();
   renderSessions();
   renderSelected();
   renderActivity();
@@ -178,6 +185,11 @@ for (const btn of document.querySelectorAll(".tab")) {
     // Let feature modules start / stop their work based on visibility so
     // inactive tabs don't waste network or timers.
     setLogsVisible(target === "logs");
+    if (target === "terminal" && selectedName) {
+      openTerminal(selectedName);
+    } else {
+      closeTerminal();
+    }
   });
 }
 
