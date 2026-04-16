@@ -11,6 +11,8 @@
 
 import { events } from "./lib/events.js";
 import { sessionsStore, CURRENT, IDLE } from "./lib/sessions.js";
+import { mountActivity, renderActivity } from "./lib/activity.js";
+import { mountLogs, setLogsVisible } from "./lib/logs.js";
 
 // ── DOM lookups (cached at module load) ────────────────────────────────────
 
@@ -28,7 +30,14 @@ const el = {
   infoPort: document.querySelector('[data-slot="info-port"]'),
   infoPath: document.querySelector('[data-slot="info-path"]'),
   infoStarted: document.querySelector('[data-slot="info-started"]'),
+  activity: document.querySelector('[data-slot="activity"]'),
+  logs: document.querySelector('[data-slot="logs"]'),
 };
+
+// ── Feature modules ────────────────────────────────────────────────────────
+
+mountActivity(el.activity, () => selectedName);
+mountLogs(el.logs);
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -136,6 +145,7 @@ function selectSession(name) {
   selectedName = name;
   renderSessions();
   renderSelected();
+  renderActivity();
 }
 
 // ── Action buttons (stop / restart) ────────────────────────────────────────
@@ -165,6 +175,9 @@ for (const btn of document.querySelectorAll(".tab")) {
     document.querySelectorAll(".panel").forEach((p) => {
       p.classList.toggle("is-active", p.dataset.panel === target);
     });
+    // Let feature modules start / stop their work based on visibility so
+    // inactive tabs don't waste network or timers.
+    setLogsVisible(target === "logs");
   });
 }
 
