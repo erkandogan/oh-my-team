@@ -83,7 +83,7 @@ require_router() {
 hub_init() {
     local PLATFORM="" TOKEN="" CHAT_ID="" APP_TOKEN=""
 
-    # Parse flags if provided (non-interactive mode)
+    # Parse flags if provided (non-interactive mode for LLM agents)
     while [ $# -gt 0 ]; do
         case "$1" in
             --telegram)   PLATFORM="telegram"; shift ;;
@@ -99,12 +99,14 @@ hub_init() {
 
     mkdir -p "$OMT_DIR"
 
-    echo ""
-    echo -e "${CYAN}${BOLD}  Oh My Team Hub Setup${RESET}"
-    echo ""
-
-    # Step 1: Choose platform
+    # If no flags → run the modern interactive flow (arrow keys, masked input, spinners)
     if [ -z "$PLATFORM" ]; then
+        local INIT_SCRIPT="$PLUGIN_DIR/bin/hub-init.mjs"
+        if [ -f "$INIT_SCRIPT" ] && command -v node &>/dev/null; then
+            node "$INIT_SCRIPT" "$OMT_DIR"
+            return $?
+        fi
+        # Fallback: if Node isn't available, use the classic numbered-prompt flow below
         echo -e "  ${BOLD}Step 1:${RESET} Choose your messaging platform"
         echo ""
         echo -e "    ${GREEN}1)${RESET} Telegram  ${DIM}(Forum Topics for per-project threads)${RESET}"

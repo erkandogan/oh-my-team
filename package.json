@@ -6,6 +6,7 @@
     "omt": "bin/omt"
   },
   "scripts": {
+    "build:init": "bun build bin/hub-init.ts --outfile bin/hub-init.mjs --target node",
     "postinstall": "node ./bin/postinstall.js"
   },
   "keywords": [
@@ -52,5 +53,8 @@
   ],
   "engines": {
     "node": ">=16"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.2.0"
   }
 }
