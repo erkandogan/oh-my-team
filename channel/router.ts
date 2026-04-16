@@ -333,9 +333,19 @@ Bun.serve({
         hubDir: OMT_HUB_DIR,
       });
       if (dashDecision === "upgrade") {
-        if (server.upgrade(req, { data: { kind: "events" as const } })) {
-          return undefined;
+        // Pick the right data payload based on the URL so the WS handlers
+        // know whether this is an event stream or a PTY attachment.
+        let wsData: { kind: "events" } | { kind: "tmux"; sessionName: string };
+        if (url.pathname === "/ws/events") {
+          wsData = { kind: "events" };
+        } else {
+          const sessionName = url.pathname.slice("/ws/tmux/".length);
+          if (!sessionName || !registry.sessions[sessionName]) {
+            return new Response("session not found", { status: 404 });
+          }
+          wsData = { kind: "tmux", sessionName };
         }
+        if (server.upgrade(req, { data: wsData })) return undefined;
         return new Response("upgrade failed", { status: 400 });
       }
       if (dashDecision instanceof Response) return dashDecision;

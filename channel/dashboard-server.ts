@@ -13,6 +13,12 @@
 
 import path from "node:path";
 import type { ServerWebSocket } from "bun";
+import type { IPty } from "node-pty";
+import {
+  attachTmuxPty,
+  closeTmuxPty,
+  handleTmuxMessage,
+} from "./dashboard-pty";
 
 // ── Shared types ──────────────────────────────────────────────────────────
 
@@ -30,9 +36,9 @@ export type DashboardEvent =
   | { type: "session.status.cleared"; name: string }
   | { type: "router.log"; line: string };
 
-interface DashboardWsData {
-  kind: "events";
-}
+export type DashboardWsData =
+  | { kind: "events" }
+  | { kind: "tmux"; sessionName: string; pty?: IPty };
 
 // ── Static file serving ───────────────────────────────────────────────────
 
@@ -215,7 +221,7 @@ export async function handleDashboardRequest(
   const method = req.method;
 
   // WebSocket upgrade request — the router performs the actual upgrade.
-  if (url.pathname === "/ws/events") {
+  if (url.pathname === "/ws/events" || url.pathname.startsWith("/ws/tmux/")) {
     return "upgrade";
   }
 
@@ -246,17 +252,24 @@ export async function handleDashboardRequest(
 /** Handlers for the shared websocket. Branches on ws.data.kind so multiple
  *  WS endpoints can share the same Bun.serve instance. */
 export const dashboardWebSocketHandlers = {
-  open(ws: ServerWebSocket<DashboardWsData>) {
+  async open(ws: ServerWebSocket<DashboardWsData>) {
     if (ws.data.kind === "events") {
       eventSubscribers.add(ws);
+    } else if (ws.data.kind === "tmux") {
+      await attachTmuxPty(ws, ws.data.sessionName);
     }
   },
-  message(_ws: ServerWebSocket<DashboardWsData>, _msg: string | Buffer) {
-    // Clients don't need to send anything yet. Future: input to terminal.
+  message(ws: ServerWebSocket<DashboardWsData>, msg: string | Buffer) {
+    if (ws.data.kind === "tmux") {
+      handleTmuxMessage(ws, msg);
+    }
+    // Events socket has no inbound messages right now. Future: ping/pong.
   },
   close(ws: ServerWebSocket<DashboardWsData>) {
     if (ws.data.kind === "events") {
       eventSubscribers.delete(ws);
+    } else if (ws.data.kind === "tmux") {
+      closeTmuxPty(ws);
     }
   },
 } as const;
