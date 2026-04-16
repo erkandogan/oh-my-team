@@ -624,11 +624,7 @@ ROUTER_URL=http://localhost:$ROUTER_PORT
 SESSION_NAME=hub
 ENVEOF
 
-        echo -e "${YELLOW}The hub session will open in this terminal.${RESET}"
-        echo -e "${YELLOW}You may need to accept trust/channel prompts on first run.${RESET}"
-        echo -e "${YELLOW}After it starts, press Ctrl+B then D to detach.${RESET}"
-        echo ""
-        read -p "  Press Enter to start the hub session... " _
+        echo -e "${GREEN}Starting hub session...${RESET}"
 
         tmux new-session -d -s "omt-hub" \
             "cd '$HOME' && \
@@ -643,16 +639,29 @@ ENVEOF
                $CONTINUE_FLAG; \
              echo 'Hub stopped. Press any key...'; read -n1"
 
-        # Run bridge health check + registration in the background
-        # so it auto-registers while the user handles trust prompts in tmux
-        (
-            local retries=0
-            while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
-                sleep 1
-                retries=$((retries + 1))
-                [ $retries -gt 90 ] && exit 1
-            done
-            # Register hub — retry a few times in case router is briefly busy
+        # Auto-accept trust and channel prompts (no manual interaction needed)
+        sleep 3
+        tmux send-keys -t omt-hub Enter 2>/dev/null
+        sleep 2
+        tmux send-keys -t omt-hub Enter 2>/dev/null
+
+        # Wait for bridge to be ready
+        echo -e "  ${DIM}Waiting for hub bridge...${RESET}"
+        local retries=0
+        while ! curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; do
+            sleep 1
+            retries=$((retries + 1))
+            if [ $retries -gt 60 ]; then
+                echo -e "${YELLOW}Hub bridge not ready yet. You may need to accept prompts:${RESET}"
+                echo -e "  ${CYAN}omt hub attach${RESET}  (then Ctrl+B, D to detach)"
+                break
+            fi
+            # Periodically retry auto-accept in case prompts appeared late
+            [ $((retries % 10)) -eq 0 ] && tmux send-keys -t omt-hub Enter 2>/dev/null
+        done
+
+        # Register hub with the router
+        if curl -s "http://localhost:$HUB_BRIDGE_PORT/health" > /dev/null 2>&1; then
             local reg_retries=0
             while [ $reg_retries -lt 5 ]; do
                 local reg_result=$(curl -s -X POST "http://localhost:$ROUTER_PORT/sessions" \
@@ -662,23 +671,7 @@ ENVEOF
                 reg_retries=$((reg_retries + 1))
                 sleep 1
             done
-        ) &
-
-        # Attach immediately so user can handle trust/channel prompts
-        echo -e "${GREEN}Attaching to hub session. Accept any prompts, then Ctrl+B, D to detach.${RESET}"
-        sleep 1
-        tmux attach-session -t "omt-hub"
-
-        # After detach, check if registration already happened in background
-        if curl -s "http://localhost:$ROUTER_PORT/sessions/hub" 2>/dev/null | grep -q '"threadId"'; then
-            local platform=$(get_platform)
-            if [ "$platform" = "slack" ]; then
-                echo -e "${GREEN}Hub registered. Listening on Slack channel root.${RESET}"
-            else
-                echo -e "${GREEN}Hub registered. Listening on Telegram General topic.${RESET}"
-            fi
-        else
-            echo -e "${DIM}Hub registration pending — will auto-register when bridge is ready.${RESET}"
+            echo -e "${GREEN}Hub registered.${RESET}"
         fi
     fi
 
