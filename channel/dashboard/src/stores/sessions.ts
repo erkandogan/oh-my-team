@@ -6,6 +6,7 @@
  * holds session metadata only.
  */
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { onEvent } from "../hooks/useEventStream";
 
 export interface Session {
@@ -50,14 +51,25 @@ const useSessionsStore = create<SessionsState>((set) => ({
 }));
 
 export function useSessions(filter?: string): Session[] {
-  return useSessionsStore((state) => {
-    const all = Object.values(state.byName).filter((s) => s.name !== "hub");
-    const q = filter?.trim().toLowerCase();
-    const matched = q
-      ? all.filter((s) => s.name.toLowerCase().includes(q) || s.path.toLowerCase().includes(q))
-      : all;
-    return matched.sort((a, b) => a.name.localeCompare(b.name));
-  });
+  // useShallow makes the derived array identity-stable when the underlying
+  // sessions haven't changed — critical, because this selector returns a
+  // freshly-allocated filtered+sorted array on every call, and zustand's
+  // default referential equality would otherwise trigger an infinite render
+  // loop (React #185) as every state tick produces a new array reference.
+  return useSessionsStore(
+    useShallow((state) => {
+      const all = Object.values(state.byName).filter((s) => s.name !== "hub");
+      const q = filter?.trim().toLowerCase();
+      const matched = q
+        ? all.filter(
+            (s) =>
+              s.name.toLowerCase().includes(q) ||
+              s.path.toLowerCase().includes(q),
+          )
+        : all;
+      return matched.sort((a, b) => a.name.localeCompare(b.name));
+    }),
+  );
 }
 
 export function useSession(name: string): Session | undefined {
@@ -69,6 +81,22 @@ export function initSessionsStore(): void {
   if (initialized) return;
   initialized = true;
   const { upsert, remove, setStatus } = useSessionsStore.getState();
+
+  // One-time hydration of sessions that already exist before we connected.
+  // The event stream only fires for state CHANGES after subscription, so
+  // without this the sidebar appears empty on a reload even when sessions
+  // are running.
+  void fetch("/sessions")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data || typeof data !== "object") return;
+      for (const [name, info] of Object.entries(data as Record<string, Partial<Session>>)) {
+        upsert({ name, ...info });
+      }
+    })
+    .catch(() => {
+      // Router may be unreachable at boot; the event stream will catch up later.
+    });
 
   onEvent("session.registered", (e) =>
     upsert({
