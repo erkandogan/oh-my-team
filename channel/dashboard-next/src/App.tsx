@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import TerminalPane from "@/components/TerminalPane";
 import Workspace from "@/components/Workspace";
+import ReparentSpike from "@/_spike/ReparentSpike";
 
 export default function App() {
   if (window.location.pathname === "/workspace/__terminal-test") {
     return <TerminalTestRoute />;
+  }
+  if (window.location.pathname === "/workspace/_spike") {
+    return <ReparentSpike />;
   }
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
