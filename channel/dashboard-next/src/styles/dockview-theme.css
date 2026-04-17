@@ -1,0 +1,20 @@
+@import "dockview-react/dist/styles/dockview.css";
+
+.dockview-theme-dark,
+.dockview-theme-dark * {
+  --dv-background-color: #0a0a0a;
+  --dv-tabs-and-actions-container-background-color: #111111;
+  --dv-activegroup-hiddenpanel-tab-background-color: #111111;
+  --dv-activegroup-visiblepanel-tab-background-color: #1a1a1a;
+  --dv-activegroup-visiblepanel-tab-color: #f0f0f0;
+  --dv-activegroup-hiddenpanel-tab-color: #888;
+  --dv-inactivegroup-visiblepanel-tab-background-color: #111111;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: #111111;
+  --dv-separator-border: #1f1f1f;
+  --dv-paneview-header-border-color: #1f1f1f;
+  --dv-drag-over-background-color: rgba(0, 220, 208, 0.1);
+  --dv-drag-over-border-color: #00dcd0;
+  --dv-tabs-container-scrollbar-color: #888;
+  --dv-group-view-background-color: #0a0a0a;
+  --dv-header-tab-height: 36px;
+}

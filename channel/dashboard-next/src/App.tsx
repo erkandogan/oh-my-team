@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import TerminalPane from "@/components/TerminalPane";
+import Workspace from "@/components/Workspace";
 
 export default function App() {
   if (window.location.pathname === "/workspace/__terminal-test") {
     return <TerminalTestRoute />;
   }
   return (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-      <p className="text-primary">oh<span>my</span>team workspace</p>
+    <div className="h-screen flex flex-col bg-background text-foreground">
+      <div className="flex-1 overflow-hidden">
+        <Workspace />
+      </div>
     </div>
   );
 }
