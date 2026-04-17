@@ -26,6 +26,7 @@ export function openPtySocket(
 ): PtyHandle {
   let socket: WebSocket | null = null;
   let disposed = false;
+  let hasConnectedOnce = false;
   let retryDelayMs = BACKOFF_MIN_MS;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingSends: string[] = [];
@@ -38,6 +39,7 @@ export function openPtySocket(
     socket = new WebSocket(url);
 
     socket.addEventListener("open", () => {
+      hasConnectedOnce = true;
       retryDelayMs = BACKOFF_MIN_MS;
       for (const msg of pendingSends) socket?.send(msg);
       pendingSends.length = 0;
@@ -52,9 +54,19 @@ export function openPtySocket(
       onData(data);
     });
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (ev) => {
       socket = null;
       if (disposed) {
+        onClose();
+        return;
+      }
+      // If we never successfully opened a session (e.g. the server returned
+      // a protocol error on upgrade — tmux session missing, path rejected),
+      // don't retry forever. This commonly happens when a restored layout
+      // references a session that no longer exists; backing off for 10s per
+      // phantom panel forever would waste network / logs / router attention.
+      if (!hasConnectedOnce && (ev.code === 1011 || ev.code === 1006)) {
+        disposed = true;
         onClose();
         return;
       }

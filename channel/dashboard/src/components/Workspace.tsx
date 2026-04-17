@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   DockviewReact,
   DockviewReadyEvent,
@@ -23,6 +23,7 @@ import {
   registerMinimizeActive,
 } from "@/components/MinimizedTray";
 import { useTrayStore } from "@/stores/tray";
+import { onEvent } from "@/hooks/useEventStream";
 
 let dockviewApi: DockviewApi | null = null;
 
@@ -131,12 +132,30 @@ export default function Workspace() {
       useTrayStore.getState().minimize(name);
       dockviewApi.removePanel(active);
     });
-    useTrayStore.subscribe((state, prev) => {
+  };
+
+  // Subscriptions that don't belong inside onReady (which may fire more than
+  // once under React 19 StrictMode). We set them up in a proper effect so
+  // they're torn down on unmount and never double-register.
+  useEffect(() => {
+    const unsubTray = useTrayStore.subscribe((state, prev) => {
       for (const name of prev.minimized) {
         if (!state.minimized.has(name)) openOrFocusTerminal(name);
       }
     });
-  };
+
+    // When the router tells us a session has been removed (explicit
+    // `omt hub remove`, not a stop), drop its pooled terminal so we don't
+    // keep a dead PTY alive.
+    const offRemoved = onEvent("session.removed", (e) => {
+      disposeEntry(e.name);
+    });
+
+    return () => {
+      unsubTray();
+      offRemoved();
+    };
+  }, []);
 
   const handleKeyAction = useCallback((action: KeyAction) => {
     if (!dockviewApi) return;

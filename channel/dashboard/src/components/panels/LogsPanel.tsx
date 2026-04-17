@@ -1,18 +1,24 @@
 /**
- * Logs panel — tails the router log file in real time.
+ * Logs panel — tails the shared router log file in real time.
  *
- * Polls /api/logs?tail=200 every second. Polling keeps the server side
- * simple (no broadcast plumbing for log lines) and is cheap for a single
- * localhost client, matching the legacy dashboard/lib/logs.js behaviour.
+ * The router log captures everything — session events, adapter traffic,
+ * errors — for the whole hub, not per-session. So this panel shows the
+ * router's view, optionally filtered by a session name. If the panel
+ * params include `sessionName`, lines are filtered client-side to ones
+ * that mention it; otherwise the unfiltered tail is shown.
+ *
+ * Polling /api/logs?tail=200 once a second keeps the server side simple
+ * (no broadcast plumbing for log lines) and is cheap for localhost.
  *
  * Auto-scrolls to the bottom when the user was already at the bottom, so
  * scrolling up to inspect older lines isn't yanked away on the next tick.
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { IDockviewPanelProps } from "dockview-react";
 
 export interface LogsPanelParams {
-  sessionName: string;
+  /** Optional — when set, lines are filtered to ones mentioning the name. */
+  sessionName?: string;
 }
 
 const POLL_MS = 1000;
@@ -53,16 +59,24 @@ export function LogsPanelComponent({ params }: IDockviewPanelProps<LogsPanelPara
     };
   }, []);
 
+  // Filter client-side to lines that mention the session name. Cheap because
+  // TAIL is 200 — no point sending a per-session request to the server.
+  const visibleLines = useMemo(() => {
+    if (!sessionName) return lines;
+    const needle = sessionName.toLowerCase();
+    return lines.filter((l) => l.toLowerCase().includes(needle));
+  }, [lines, sessionName]);
+
   useEffect(() => {
     if (wasAtBottomRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [lines]);
+  }, [visibleLines]);
 
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="px-3 py-2 border-b border-border text-xs text-muted-foreground shrink-0">
-        Logs — {sessionName}
+        {sessionName ? `Router logs — ${sessionName}` : "Router logs"}
       </div>
       <div
         ref={scrollRef}
@@ -70,10 +84,12 @@ export function LogsPanelComponent({ params }: IDockviewPanelProps<LogsPanelPara
       >
         {error ? (
           <p className="text-destructive">{error}</p>
-        ) : lines.length === 0 ? (
-          <p className="text-muted-foreground">(empty)</p>
+        ) : visibleLines.length === 0 ? (
+          <p className="text-muted-foreground">
+            {sessionName ? `(no router lines mention "${sessionName}")` : "(empty)"}
+          </p>
         ) : (
-          lines.map((line, i) => (
+          visibleLines.map((line, i) => (
             <div key={i} className="whitespace-pre text-foreground">
               {line}
             </div>

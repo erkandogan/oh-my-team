@@ -87,16 +87,29 @@ async function serveStatic(pathname: string): Promise<Response> {
     // SPA fallback: client-side route with no on-disk file → serve index.html.
     if (ext === "" || ext === ".html") {
       return new Response(index, {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          // index.html references hashed asset filenames; if we cached it,
+          // users would load stale UI after an upgrade until the cache
+          // expired. Assets below use aggressive caching; index is no-store.
+          "Cache-Control": "no-store",
+        },
       });
     }
     return new Response("not found", { status: 404 });
   }
 
+  // Vite writes content-hashed filenames for every asset under assets/, so
+  // they're immutable for the lifetime of the file — safe to cache for a
+  // long time. index.html itself is no-store so users pick up new hashes
+  // immediately on upgrade.
+  const isHtml = ext === ".html";
   return new Response(file, {
     headers: {
       "Content-Type": DASHBOARD_MIME.get(ext) || "application/octet-stream",
-      "Cache-Control": "public, max-age=60",
+      "Cache-Control": isHtml
+        ? "no-store"
+        : "public, max-age=31536000, immutable",
     },
   });
 }
@@ -238,12 +251,42 @@ export async function handleDashboardRequest(
 
     const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/(stop|restart)$/);
     if (sessionMatch && method === "POST") {
+      // CSRF defence. The router binds to 127.0.0.1 only, but any other
+      // origin loaded in the same browser (a malicious page, a local dev
+      // server on a different port) could still hit us via `fetch`. Browsers
+      // always set `Origin` on cross-origin non-GET requests, so reject
+      // anything that isn't our own dashboard.
+      const origin = req.headers.get("origin");
+      if (!isLocalOrigin(origin, ctx.routerPort)) {
+        return Response.json(
+          { error: "origin not allowed" },
+          { status: 403 }
+        );
+      }
       const [, name, action] = sessionMatch;
       return action === "stop" ? stopSession(ctx, name) : restartSession(ctx, name);
     }
   }
 
   return null;
+}
+
+/** Allow only origins that are serving the dashboard itself. The router is
+ *  localhost-only, so any legitimate POST comes from `http://localhost:<port>`
+ *  or `http://127.0.0.1:<port>`. Missing Origin (Workers, curl without it) is
+ *  rejected too — legitimate browser usage always sets it on POST. */
+function isLocalOrigin(origin: string | null, port: number): boolean {
+  if (!origin) return false;
+  try {
+    const u = new URL(origin);
+    const host = u.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") return false;
+    // Allow the router's own port, or any port (dev Vite server) on the same host.
+    // Dev server acceptance is limited to localhost anyway.
+    return u.port === String(port) || u.port !== "";
+  } catch {
+    return false;
+  }
 }
 
 // ── WebSocket handlers (wired into Bun.serve's `websocket` option) ─────────

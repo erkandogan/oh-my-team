@@ -33,3 +33,4 @@ attachments/
 
 # Claude Code local state
 .sisyphus/
+channel/dashboard/dist/

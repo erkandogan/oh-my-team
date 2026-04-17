@@ -94,6 +94,24 @@ export function disposeEntry(sessionName: string): void {
   pool.delete(sessionName);
 }
 
+/** Dispose every pooled entry. Wired to `beforeunload` so page navigation
+ *  / tab-close releases the PTY bridges + grouped tmux sessions cleanly
+ *  instead of waiting for the server-side WS `close` handler timeouts. */
+export function disposeAllEntries(): void {
+  for (const name of Array.from(pool.keys())) {
+    disposeEntry(name);
+  }
+}
+
+// Install the window-level sweep once, the first time this module loads.
+// `beforeunload` fires for reload, navigation, and tab-close — covering the
+// common "user walks away" cases without the server having to time out.
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    disposeAllEntries();
+  });
+}
+
 /**
  * Mount the pool entry for `sessionName` into `slot` for the duration of the
  * effect. On cleanup, the host returns to the parking root so the terminal

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { IDockviewPanelProps } from "dockview-react";
 import { useEventStream } from "@/hooks/useEventStream";
 
@@ -17,24 +17,40 @@ export function ActivityPanelComponent({ params }: IDockviewPanelProps<ActivityP
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const addEntry = (type: string, text: string) => {
+  // Handlers are wrapped in useCallback so `useEventStream` doesn't tear
+  // down and re-subscribe on every state update — entries change on every
+  // received event, which would otherwise churn the subscription list.
+  const addEntry = useCallback((type: string, text: string) => {
     setEntries((prev) => [...prev.slice(-99), { ts: Date.now(), type, text }]);
-  };
+  }, []);
 
-  useEventStream("session.status", (e) => {
-    if (e.name !== sessionName) return;
-    addEntry("status", e.current ? `Working: ${e.current}` : "Idle");
-  });
+  const onStatus = useCallback(
+    (e: { name: string; current: string | null }) => {
+      if (e.name !== sessionName) return;
+      addEntry("status", e.current ? `Working: ${e.current}` : "Idle");
+    },
+    [sessionName, addEntry],
+  );
 
-  useEventStream("session.registered", (e) => {
-    if (e.name !== sessionName) return;
-    addEntry("registered", `Session registered at ${e.path}`);
-  });
+  const onRegistered = useCallback(
+    (e: { name: string; path: string }) => {
+      if (e.name !== sessionName) return;
+      addEntry("registered", `Session registered at ${e.path}`);
+    },
+    [sessionName, addEntry],
+  );
 
-  useEventStream("session.status.cleared", (e) => {
-    if (e.name !== sessionName) return;
-    addEntry("cleared", "Status cleared");
-  });
+  const onCleared = useCallback(
+    (e: { name: string }) => {
+      if (e.name !== sessionName) return;
+      addEntry("cleared", "Status cleared");
+    },
+    [sessionName, addEntry],
+  );
+
+  useEventStream("session.status", onStatus);
+  useEventStream("session.registered", onRegistered);
+  useEventStream("session.status.cleared", onCleared);
 
   useEffect(() => {
     if (scrollRef.current) {

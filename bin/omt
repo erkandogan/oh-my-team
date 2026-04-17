@@ -565,6 +565,16 @@ hub_start() {
             -name spawn-helper -exec chmod +x {} \; 2>/dev/null
     fi
 
+    # Build the dashboard if its compiled output is missing. npm installs ship
+    # a pre-built dist/ inside the tarball, so end users skip this branch.
+    # Fresh git clones (where dist/ is gitignored) hit it once and we build
+    # silently instead of leaving the user staring at a 404 dashboard.
+    local DASHBOARD_DIR="$CHANNEL_DIR/dashboard"
+    if [ -f "$DASHBOARD_DIR/package.json" ] && [ ! -f "$DASHBOARD_DIR/dist/index.html" ]; then
+        echo -e "${YELLOW}Building dashboard (first-run)...${RESET}"
+        (cd "$DASHBOARD_DIR" && bun install --no-summary 2>&1 | tail -n 1 && bun run build 2>&1 | tail -n 3)
+    fi
+
     # Start the router
     if tmux has-session -t "omt-router" 2>/dev/null; then
         echo -e "${YELLOW}Router already running.${RESET}"
