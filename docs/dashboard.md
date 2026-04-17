@@ -104,6 +104,12 @@ ssh -L 8800:localhost:8800 user@host
 
 Then open `http://localhost:8800/dashboard` on your local machine.
 
+## Build artifact
+
+`channel/dashboard/dist/` is a build artifact that ships inside the npm
+tarball. The `postinstall` `cpSync` copies it into the user's install on
+every upgrade.
+
 ## Requirements
 
 - `tmux` (same as the rest of the hub)

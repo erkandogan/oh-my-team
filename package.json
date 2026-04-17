@@ -7,7 +7,9 @@
   },
   "scripts": {
     "build:init": "bun build bin/hub-init.ts --outfile bin/hub-init.mjs --target node",
-    "postinstall": "node ./bin/postinstall.js"
+    "postinstall": "node ./bin/postinstall.js",
+    "build:dashboard": "cd channel/dashboard-next && bun install && bun run build",
+    "prepublishOnly": "npm run build:dashboard"
   },
   "keywords": [
     "claude-code",

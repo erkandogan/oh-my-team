@@ -21,6 +21,8 @@ bun.lock
 # Channel build artifacts
 channel/dist/
 channel/node_modules/
+channel/dashboard-next/dist/
+channel/dashboard-next/node_modules/
 
 # Hub state (local, not committed)
 hub-registry.json
