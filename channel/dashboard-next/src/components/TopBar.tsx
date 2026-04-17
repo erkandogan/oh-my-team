@@ -1,4 +1,5 @@
 import { useRouterStatus, usePlatformInfo } from "@/lib/system-status";
+import ResetLayoutButton from "@/components/ResetLayoutButton";
 
 export default function TopBar() {
   const routerStatus = useRouterStatus();
@@ -16,6 +17,7 @@ export default function TopBar() {
       <div className="flex items-center gap-2 ml-auto">
         <StatusChip label={platform?.platform ?? "…"} status="neutral" />
         <StatusChip label="router" status={routerStatus} />
+        <ResetLayoutButton />
       </div>
     </header>
   );

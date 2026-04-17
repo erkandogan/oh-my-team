@@ -15,6 +15,7 @@ import { setupLayoutPersistence } from "@/lib/layout-persistence";
 import { setupWorkspaceDnd } from "@/lib/workspace-dnd";
 import { useKeyboardBindings } from "@/hooks/useKeyboardBindings";
 import type { KeyAction } from "@/lib/keybindings";
+import { registerClearWorkspace } from "@/components/ResetLayoutButton";
 
 let dockviewApi: DockviewApi | null = null;
 
@@ -102,6 +103,14 @@ export default function Workspace() {
     }
     setupLayoutPersistence(event.api);
     setupWorkspaceDnd(event.api);
+    registerClearWorkspace(() => {
+      event.api.clear();
+      event.api.addPanel({
+        id: "welcome",
+        component: "placeholder",
+        title: "Welcome",
+      });
+    });
   };
 
   const handleKeyAction = useCallback((action: KeyAction) => {
