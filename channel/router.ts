@@ -722,3 +722,20 @@ process.on("SIGTERM", async () => {
   await adapter.disconnect();
   process.exit(0);
 });
+
+// ── Safety net ─────────────────────────────────────────────────────────────
+// An uncaught error from anywhere in the HTTP/WebSocket handlers (dashboard
+// code, adapters, etc.) used to take the whole router down with it, severing
+// every bridge. Log and keep running — sessions stay alive, a bad handler
+// fails isolated to its request.
+
+process.on("uncaughtException", (err) => {
+  process.stderr.write(
+    `omt-router: UNCAUGHT EXCEPTION: ${err.stack || err.message}\n`
+  );
+});
+process.on("unhandledRejection", (reason) => {
+  const msg =
+    reason instanceof Error ? reason.stack || reason.message : String(reason);
+  process.stderr.write(`omt-router: UNHANDLED REJECTION: ${msg}\n`);
+});

@@ -36,16 +36,19 @@ const el = {
   terminal: document.querySelector('[data-slot="terminal"]'),
 };
 
+// ── State ───────────────────────────────────────────────────────────────────
+// Declared before the mount calls below because mountActivity() invokes
+// its getter immediately during its initial render pass, which would hit
+// the TDZ if the variable were hoisted below.
+
+let selectedName = null;
+
 // ── Feature modules ────────────────────────────────────────────────────────
 
 mountActivity(el.activity, () => selectedName);
 mountLogs(el.logs);
 // Terminal module loads xterm.js bundles lazily — fire and forget
 void mountTerminal(el.terminal);
-
-// ── State ───────────────────────────────────────────────────────────────────
-
-let selectedName = null;
 
 // ── Top-bar chips ──────────────────────────────────────────────────────────
 

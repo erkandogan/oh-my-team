@@ -86,16 +86,35 @@ export async function attachTmuxPty(
   // Spawn tmux under a PTY. `-u` forces UTF-8 which matches xterm.js defaults.
   // The initial cols/rows are placeholders — the client sends a resize event
   // immediately after the terminal mounts so they get set correctly.
-  const term: IPty = pty.spawn("tmux", ["attach-session", "-t", `omt-${sessionName}`, "-u"], {
-    name: "xterm-256color",
-    cols: 80,
-    rows: 24,
-    cwd: process.env.HOME || "/tmp",
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-    },
-  });
+  //
+  // node-pty throws synchronously on spawn failure (missing binary, PATH,
+  // posix_spawnp errors, ...). Catching here is critical — an uncaught throw
+  // from this WebSocket `open` handler takes the whole router down with it.
+  let term: IPty;
+  try {
+    term = pty.spawn(
+      "tmux",
+      ["attach-session", "-t", `omt-${sessionName}`, "-u"],
+      {
+        name: "xterm-256color",
+        cols: 80,
+        rows: 24,
+        cwd: process.env.HOME || "/tmp",
+        env: buildPtyEnv(),
+      }
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(
+      `omt-router: pty spawn failed for "${sessionName}": ${msg}\n`
+    );
+    sendControl(ws, {
+      kind: "error",
+      message: `Failed to attach terminal: ${msg}`,
+    });
+    ws.close(1011, "pty spawn failed");
+    return;
+  }
 
   if (ws.data.kind === "tmux") ws.data.pty = term;
 
@@ -199,4 +218,19 @@ function sendControl(
   } catch {
     // socket closed
   }
+}
+
+/**
+ * Build a clean env for node-pty. `process.env` is a Proxy in Bun and
+ * spreading it can yield `undefined` values for missing keys, which
+ * node-pty's native layer chokes on (posix_spawnp returns EINVAL). We
+ * copy only defined string values and make sure TERM is set.
+ */
+function buildPtyEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  out.TERM = "xterm-256color";
+  return out;
 }
