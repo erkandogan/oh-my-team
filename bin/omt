@@ -568,11 +568,23 @@ hub_start() {
     # Build the dashboard if its compiled output is missing. npm installs ship
     # a pre-built dist/ inside the tarball, so end users skip this branch.
     # Fresh git clones (where dist/ is gitignored) hit it once and we build
-    # silently instead of leaving the user staring at a 404 dashboard.
+    # instead of leaving the user staring at a 404 dashboard.
     local DASHBOARD_DIR="$CHANNEL_DIR/dashboard"
     if [ -f "$DASHBOARD_DIR/package.json" ] && [ ! -f "$DASHBOARD_DIR/dist/index.html" ]; then
         echo -e "${YELLOW}Building dashboard (first-run)...${RESET}"
-        (cd "$DASHBOARD_DIR" && bun install --no-summary 2>&1 | tail -n 1 && bun run build 2>&1 | tail -n 3)
+        # Each step runs unpiped so a bun install failure (e.g. offline, npm
+        # registry down) surfaces the real error and aborts the branch
+        # instead of silently continuing to a doomed `bun run build`.
+        if ! (cd "$DASHBOARD_DIR" && bun install --no-summary); then
+            echo -e "${RED}Dashboard dependency install failed.${RESET}"
+            echo -e "  Run ${CYAN}cd $DASHBOARD_DIR && bun install${RESET} to see the error, then retry."
+            exit 1
+        fi
+        if ! (cd "$DASHBOARD_DIR" && bun run build); then
+            echo -e "${RED}Dashboard build failed.${RESET}"
+            echo -e "  Run ${CYAN}cd $DASHBOARD_DIR && bun run build${RESET} to inspect."
+            exit 1
+        fi
     fi
 
     # Start the router

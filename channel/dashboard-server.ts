@@ -274,16 +274,19 @@ export async function handleDashboardRequest(
 /** Allow only origins that are serving the dashboard itself. The router is
  *  localhost-only, so any legitimate POST comes from `http://localhost:<port>`
  *  or `http://127.0.0.1:<port>`. Missing Origin (Workers, curl without it) is
- *  rejected too — legitimate browser usage always sets it on POST. */
-function isLocalOrigin(origin: string | null, port: number): boolean {
+ *  rejected too — legitimate browser usage always sets it on POST.
+ *
+ *  Note: `port` arg is deliberately unused in the port check. We accept any
+ *  non-empty localhost port so the Vite dev server (5173 by default) can hit
+ *  the router during development. Defaulted HTTP (port 80) and plain `http://localhost`
+ *  still fail because `URL.port` is "" — a real browser will only land there
+ *  if someone proxied us, which isn't a supported deployment. */
+function isLocalOrigin(origin: string | null, _routerPort: number): boolean {
   if (!origin) return false;
   try {
     const u = new URL(origin);
-    const host = u.hostname;
-    if (host !== "localhost" && host !== "127.0.0.1") return false;
-    // Allow the router's own port, or any port (dev Vite server) on the same host.
-    // Dev server acceptance is limited to localhost anyway.
-    return u.port === String(port) || u.port !== "";
+    if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1") return false;
+    return u.port !== "";
   } catch {
     return false;
   }

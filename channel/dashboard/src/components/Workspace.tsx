@@ -63,7 +63,10 @@ export function openLogsPanel(sessionName: string): void {
   if (!dockviewApi) return;
   const id = `logs:${sessionName}`;
   const existing = dockviewApi.getPanel(id);
-  if (existing) { existing.focus(); return; }
+  if (existing) {
+    existing.focus();
+    return;
+  }
   dockviewApi.addPanel({
     id,
     component: "logs",
