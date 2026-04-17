@@ -7,6 +7,7 @@ import {
 import { TerminalPanelComponent } from "@/components/panels/TerminalPanel";
 import { terminalPanelId, sessionNameFromPanelId } from "@/lib/panel-ids";
 import { disposeEntry } from "@/components/TerminalPool";
+import { setupLayoutPersistence } from "@/lib/layout-persistence";
 
 let dockviewApi: DockviewApi | null = null;
 
@@ -39,11 +40,15 @@ export default function Workspace() {
       const name = sessionNameFromPanelId(panel.id);
       if (name) disposeEntry(name);
     });
-    event.api.addPanel({
-      id: "welcome",
-      component: "placeholder",
-      title: "Welcome",
-    });
+    const hasSaved = !!localStorage.getItem("omt.workspace.layout.v1");
+    if (!hasSaved) {
+      event.api.addPanel({
+        id: "welcome",
+        component: "placeholder",
+        title: "Welcome",
+      });
+    }
+    setupLayoutPersistence(event.api);
   };
 
   return (
