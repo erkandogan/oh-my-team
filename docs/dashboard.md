@@ -70,8 +70,7 @@ for it.
 | Route | Description |
 |---|---|
 | `GET /dashboard` | Serve the dashboard HTML |
-| `GET /dashboard/*.{js,css,svg,png,woff2,json}` | Static assets |
-| `GET /dashboard/vendor/xterm/*` | xterm.js bundle from node_modules |
+| `GET /dashboard/assets/*` | Vite build assets (JS, CSS) |
 | `GET /api/config` | Platform, router port, hub dir |
 | `GET /api/logs?tail=N` | Recent router log lines (capped at 1000) |
 | `POST /api/sessions/:name/stop` | Kill tmux, keep registry |
@@ -107,8 +106,7 @@ Then open `http://localhost:8800/dashboard` on your local machine.
 ## Build artifact
 
 `channel/dashboard/dist/` is a build artifact that ships inside the npm
-tarball. The `postinstall` `cpSync` copies it into the user's install on
-every upgrade.
+tarball. Run `npm run build:dashboard` after modifying the dashboard source.
 
 ## Requirements
 

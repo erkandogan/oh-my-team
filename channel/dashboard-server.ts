@@ -50,7 +50,7 @@ export type DashboardWsData =
 
 // ── Static file serving ───────────────────────────────────────────────────
 
-const DASHBOARD_ROOT = path.join(import.meta.dir, "dashboard");
+const DASHBOARD_ROOT = path.join(import.meta.dir, "dashboard", "dist");
 
 /**
  * Files the dashboard may serve. Allowlist by extension so a misconfigured
@@ -67,39 +67,13 @@ const DASHBOARD_MIME = new Map<string, string>([
   [".json", "application/json; charset=utf-8"],
 ]);
 
-// Map vendor prefixes → absolute paths in node_modules. Lets us ship the
-// xterm.js bundle without duplicating files into the dashboard/vendor/
-// directory. The router resolves the right node_modules path at request time.
-const VENDOR_ROUTES: Record<string, string> = {
-  "vendor/xterm/xterm.js": "@xterm/xterm/lib/xterm.js",
-  "vendor/xterm/xterm.css": "@xterm/xterm/css/xterm.css",
-  "vendor/xterm/addon-fit.js": "@xterm/addon-fit/lib/addon-fit.js",
-};
-
 async function serveStatic(pathname: string): Promise<Response> {
-  // `/dashboard` and `/dashboard/`          → index.html
-  // `/dashboard/app.js`                     → app.js
-  // `/dashboard/vendor/xterm/xterm.js`      → node_modules/@xterm/xterm/lib/xterm.js
-  const rel = pathname.replace(/^\/dashboard\/?/, "") || "index.html";
-
-  // Vendor files live in node_modules — serve via an allowlist so we never
-  // expose arbitrary package files. Anything not listed → 404.
-  if (rel.startsWith("vendor/")) {
-    const target = VENDOR_ROUTES[rel];
-    if (!target) return new Response("not found", { status: 404 });
-    // __dirname/../node_modules (channel/node_modules)
-    const vendorPath = path.join(import.meta.dir, "node_modules", target);
-    const file = Bun.file(vendorPath);
-    if (!(await file.exists())) return new Response("not found", { status: 404 });
-    const ext = path.extname(vendorPath).toLowerCase();
-    return new Response(file, {
-      headers: {
-        "Content-Type": DASHBOARD_MIME.get(ext) || "application/octet-stream",
-        // Vendor bundles are versioned by package.json — cache aggressively.
-        "Cache-Control": "public, max-age=86400",
-      },
-    });
+  const index = Bun.file(path.join(DASHBOARD_ROOT, "index.html"));
+  if (!(await index.exists())) {
+    return new Response("dashboard not built — run npm run build:dashboard", { status: 404 });
   }
+
+  const rel = pathname.replace(/^\/dashboard\/?/, "") || "index.html";
 
   // Path traversal defence — the resolved path must stay under DASHBOARD_ROOT.
   const resolved = path.resolve(DASHBOARD_ROOT, rel);
@@ -108,31 +82,20 @@ async function serveStatic(pathname: string): Promise<Response> {
   }
 
   const ext = path.extname(resolved).toLowerCase();
-  const mime = DASHBOARD_MIME.get(ext);
-  if (!mime && ext !== "") {
-    return new Response("not found", { status: 404 });
-  }
-
   const file = Bun.file(resolved);
   if (!(await file.exists())) {
-    // SPA fallback: if the client navigated to a route we don't have,
-    // serve index.html so client-side routing can take over.
+    // SPA fallback: client-side route with no on-disk file → serve index.html.
     if (ext === "" || ext === ".html") {
-      const index = Bun.file(path.join(DASHBOARD_ROOT, "index.html"));
-      if (await index.exists()) {
-        return new Response(index, {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
-      }
+      return new Response(index, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
     }
     return new Response("not found", { status: 404 });
   }
 
   return new Response(file, {
     headers: {
-      "Content-Type": mime || "application/octet-stream",
-      // Short cache — long enough to avoid re-fetching every click,
-      // short enough that a user isn't stuck on stale UI after an upgrade.
+      "Content-Type": DASHBOARD_MIME.get(ext) || "application/octet-stream",
       "Cache-Control": "public, max-age=60",
     },
   });
