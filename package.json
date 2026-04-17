@@ -41,6 +41,7 @@
     "channel/router.ts",
     "channel/dashboard-server.ts",
     "channel/dashboard-pty.ts",
+    "channel/pty-bridge.cjs",
     "channel/dashboard/",
     "channel/adapters/",
     "channel/slack-manifest.yml",

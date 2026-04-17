@@ -1,75 +1,45 @@
 /**
  * Oh My Team — Dashboard PTY Bridge
  *
- * Bridges a browser WebSocket to a `tmux attach-session` subprocess running
- * under a pseudo-terminal, giving users a real interactive terminal inside
- * the dashboard. node-pty is loaded lazily so a missing native binary only
- * disables this one feature instead of crashing the router.
+ * Bridges a browser WebSocket to an interactive `tmux` session via a small
+ * Node.js helper (`pty-bridge.cjs`). The helper is spawned once per WS
+ * connection and owns the node-pty ↔ tmux pseudo-terminal; we only proxy
+ * bytes between the WebSocket and the helper's stdio.
  *
- * Wire protocol (client ⇄ server on the same WebSocket):
- *   - Data frames: binary / text streams of terminal bytes (both directions).
- *   - Control frames: JSON text starting with `\x1e`  (ASCII Record Separator,
- *     harmless inside tmux).
- *         `{"kind":"resize","cols":80,"rows":24}`
+ * Why a Node helper instead of calling node-pty directly? node-pty's native
+ * `spawn-helper` reads from the pty FD using libuv; under Bun the read
+ * path doesn't propagate data back into userland, so the terminal looks
+ * attached but no output arrives. Running the PTY under Node sidesteps
+ * that incompatibility cleanly.
  *
- * Separating control frames by prefix byte keeps the hot path (PTY output)
- * unaltered — no JSON wrapping for every chunk of stdout.
+ * Wire protocol (client ⇄ router ⇄ helper):
+ *   - Data frames: raw terminal bytes, both directions.
+ *   - Control frames: JSON text starting with \x1e (ASCII Record Separator).
+ *     `{"kind":"resize","cols":80,"rows":24}`   client → server → helper
+ *     `{"kind":"error",   "message":"..."}`    server → client
+ *     `{"kind":"exit",    "exitCode":N}`       server → client
+ *   Helper stdin accepts control frames via the same prefix, so the router
+ *   just forwards them through without interpretation.
  */
 
-import type { ServerWebSocket } from "bun";
-import type { IPty } from "node-pty";
+import type { ServerWebSocket, Subprocess } from "bun";
+import path from "node:path";
 import type { DashboardWsData } from "./dashboard-server";
 
-const CONTROL_PREFIX = "\x1e"; // ASCII Record Separator
-
-let nodePty: typeof import("node-pty") | null = null;
-let nodePtyLoadError: Error | null = null;
-
-/** Load node-pty lazily. Cached, safe to call repeatedly. */
-async function loadNodePty(): Promise<typeof import("node-pty") | null> {
-  if (nodePty) return nodePty;
-  if (nodePtyLoadError) return null;
-  try {
-    nodePty = await import("node-pty");
-    return nodePty;
-  } catch (err) {
-    nodePtyLoadError = err instanceof Error ? err : new Error(String(err));
-    process.stderr.write(
-      `omt-router: node-pty unavailable — terminal disabled (${nodePtyLoadError.message})\n`
-    );
-    return null;
-  }
-}
-
-/** Is the terminal feature available on this install? */
-export async function isPtyAvailable(): Promise<boolean> {
-  return (await loadNodePty()) !== null;
-}
+const CONTROL_PREFIX = "\x1e";
+const PTY_BRIDGE_PATH = path.join(import.meta.dir, "pty-bridge.cjs");
 
 /**
- * Attach a PTY running `tmux attach-session -t omt-<sessionName>` to the
- * given WebSocket. Stores the pty handle on ws.data so the message / close
- * handlers can reach it.
- *
- * If node-pty isn't available, sends a user-friendly error and closes the
- * socket.
+ * Attach a WebSocket to a tmux session. Spawns the pty-bridge helper under
+ * `node`, wires its stdio to the socket, and stores the subprocess on
+ * ws.data so the message / close handlers can reach it.
  */
 export async function attachTmuxPty(
   ws: ServerWebSocket<DashboardWsData>,
   sessionName: string
 ): Promise<void> {
-  const pty = await loadNodePty();
-  if (!pty) {
-    sendControl(ws, {
-      kind: "error",
-      message: "Terminal unavailable — node-pty native binary is missing.",
-    });
-    ws.close(1011, "node-pty unavailable");
-    return;
-  }
-
-  // Verify the tmux session exists before spawning — gives a clearer error
-  // than "tmux attach" failing with an exit code.
+  // Verify the tmux session exists before spawning — gives the user a
+  // clearer error than an opaque helper exit code.
   const check = Bun.spawnSync(
     ["tmux", "has-session", "-t", `omt-${sessionName}`],
     { stdout: "ignore", stderr: "ignore" }
@@ -83,131 +53,117 @@ export async function attachTmuxPty(
     return;
   }
 
-  // Spawn tmux under a PTY. `-u` forces UTF-8 which matches xterm.js defaults.
-  // The initial cols/rows are placeholders — the client sends a resize event
-  // immediately after the terminal mounts so they get set correctly.
-  //
-  // node-pty throws synchronously on spawn failure (missing binary, PATH,
-  // posix_spawnp errors, ...). Catching here is critical — an uncaught throw
-  // from this WebSocket `open` handler takes the whole router down with it.
-  let term: IPty;
+  // Unique grouped-session name so multiple dashboard clients don't
+  // collide with each other. Cleaned up when the bridge exits.
+  const groupName = `omt-${sessionName}-dash-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 6)}`;
+
+  let bridge: Subprocess;
   try {
-    term = pty.spawn(
-      "tmux",
-      ["attach-session", "-t", `omt-${sessionName}`, "-u"],
-      {
-        name: "xterm-256color",
-        cols: 80,
-        rows: 24,
-        cwd: process.env.HOME || "/tmp",
-        env: buildPtyEnv(),
-      }
-    );
+    bridge = Bun.spawn({
+      cmd: ["node", PTY_BRIDGE_PATH],
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...(process.env as Record<string, string>),
+        OMT_PTY_SESSION: sessionName,
+        OMT_PTY_GROUP: groupName,
+        OMT_PTY_COLS: "120",
+        OMT_PTY_ROWS: "30",
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(
-      `omt-router: pty spawn failed for "${sessionName}": ${msg}\n`
-    );
+    process.stderr.write(`omt-router: pty-bridge spawn failed: ${msg}\n`);
     sendControl(ws, {
       kind: "error",
-      message: `Failed to attach terminal: ${msg}`,
+      message: `Failed to start terminal: ${msg}`,
     });
-    ws.close(1011, "pty spawn failed");
+    ws.close(1011, "bridge spawn failed");
     return;
   }
 
-  if (ws.data.kind === "tmux") ws.data.pty = term;
+  if (ws.data.kind === "tmux") {
+    ws.data.bridge = bridge;
+    ws.data.groupName = groupName;
+  }
 
-  // PTY output → WS. Send as text; xterm.js doesn't care as long as the
-  // bytes are UTF-8 and don't start with our control prefix (tmux won't
-  // emit RS bytes in normal operation).
-  term.onData((data) => {
-    try {
-      ws.send(data);
-    } catch {
-      // Client disconnected between our reads — the close handler will
-      // tear down the PTY shortly.
-    }
-  });
+  // ── helper stdout → ws ──────────────────────────────────────────────
+  // Pipe the helper's terminal output (raw bytes, typically UTF-8) to the
+  // browser. One reader for the lifetime of the bridge.
+  pumpOutput(bridge, ws);
 
-  term.onExit(({ exitCode }) => {
-    sendControl(ws, { kind: "exit", exitCode });
+  // ── helper stderr → router log ──────────────────────────────────────
+  pumpErr(bridge);
+
+  // ── helper exit → notify client ─────────────────────────────────────
+  bridge.exited.then((code) => {
+    sendControl(ws, { kind: "exit", exitCode: code ?? 0 });
     try {
-      ws.close(1000, "pty exited");
+      ws.close(1000, "bridge exited");
     } catch {
-      // socket already closed — nothing to do
+      // already closed
     }
   });
 }
 
 /**
- * Handle a message from the browser. Text frames starting with the control
- * prefix are treated as JSON commands (resize, etc.); everything else goes
- * straight into the PTY stdin.
+ * Handle a message from the browser. Forward it to the helper's stdin.
+ * Control frames use the same `\x1e...\n` encoding, so the helper parses
+ * them natively — no extra work here.
  */
 export function handleTmuxMessage(
   ws: ServerWebSocket<DashboardWsData>,
   msg: string | Buffer
 ): void {
-  if (ws.data.kind !== "tmux" || !ws.data.pty) return;
-  const term = ws.data.pty;
+  if (ws.data.kind !== "tmux" || !ws.data.bridge) return;
+  const stdin = ws.data.bridge.stdin;
+  if (!stdin || typeof stdin === "number") return;
 
+  // Control frames are string; ensure they end with a newline so the
+  // helper knows the frame is complete. (xterm.js sends strings.)
+  let toWrite: string | Buffer;
   if (typeof msg === "string" && msg.startsWith(CONTROL_PREFIX)) {
-    handleTmuxControl(term, msg.slice(CONTROL_PREFIX.length));
-    return;
-  }
-
-  // Binary or plain text — forward as-is. node-pty's `write` accepts strings;
-  // for Buffer we convert. xterm.js sends strings by default.
-  if (typeof msg === "string") {
-    term.write(msg);
+    toWrite = msg.endsWith("\n") ? msg : msg + "\n";
   } else {
-    term.write(msg.toString("utf-8"));
+    toWrite = msg;
   }
-}
 
-/** Kill the PTY when the WebSocket closes. */
-export function closeTmuxPty(ws: ServerWebSocket<DashboardWsData>): void {
-  if (ws.data.kind !== "tmux" || !ws.data.pty) return;
   try {
-    ws.data.pty.kill();
+    (stdin as WritableStreamDefaultWriter | any).write?.(toWrite);
   } catch {
-    // Already gone — that's fine.
+    // bridge stdin closed — nothing to do, the exited promise will fire
   }
-  ws.data.pty = undefined;
 }
 
-// ── Control protocol ──────────────────────────────────────────────────────
-
-interface ResizeControl {
-  kind: "resize";
-  cols: number;
-  rows: number;
+/** Kill the helper + grouped tmux session when the WebSocket closes. */
+export function closeTmuxPty(ws: ServerWebSocket<DashboardWsData>): void {
+  if (ws.data.kind !== "tmux") return;
+  const { bridge, groupName } = ws.data;
+  if (bridge) {
+    try {
+      bridge.kill();
+    } catch {
+      // already exited
+    }
+    ws.data.bridge = undefined;
+  }
+  if (groupName) {
+    // Fire-and-forget; already-dead sessions produce a harmless error.
+    Bun.spawnSync(["tmux", "kill-session", "-t", groupName], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+  }
 }
+
+// ── Control protocol ─────────────────────────────────────────────────────
 
 type ServerControl =
   | { kind: "error"; message: string }
   | { kind: "exit"; exitCode: number };
-
-function handleTmuxControl(term: IPty, raw: string): void {
-  let msg: ResizeControl;
-  try {
-    msg = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  if (msg.kind === "resize" && Number.isFinite(msg.cols) && Number.isFinite(msg.rows)) {
-    // Clamp to sane bounds. Very small sizes break tmux redraw, very large
-    // sizes waste bandwidth redrawing empty space.
-    const cols = Math.min(Math.max(10, Math.floor(msg.cols)), 500);
-    const rows = Math.min(Math.max(5, Math.floor(msg.rows)), 200);
-    try {
-      term.resize(cols, rows);
-    } catch {
-      // pty may have exited between the client resize and our write
-    }
-  }
-}
 
 function sendControl(
   ws: ServerWebSocket<DashboardWsData>,
@@ -220,17 +176,63 @@ function sendControl(
   }
 }
 
+// ── Stream pumps ─────────────────────────────────────────────────────────
+
 /**
- * Build a clean env for node-pty. `process.env` is a Proxy in Bun and
- * spreading it can yield `undefined` values for missing keys, which
- * node-pty's native layer chokes on (posix_spawnp returns EINVAL). We
- * copy only defined string values and make sure TERM is set.
+ * Continuously forward bytes from the helper's stdout to the WebSocket.
+ * Stops on stream end or error — Bun handles back-pressure via the
+ * reader's await so a slow client just slows the pump, it doesn't buffer.
  */
-function buildPtyEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (typeof v === "string") out[k] = v;
+async function pumpOutput(
+  bridge: Subprocess,
+  ws: ServerWebSocket<DashboardWsData>
+): Promise<void> {
+  const stdout = bridge.stdout;
+  if (!stdout || typeof stdout === "number") return;
+  const reader = (stdout as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      if (!value || value.length === 0) continue;
+      // xterm.js accepts strings; binary is valid too but decoding once here
+      // avoids the client having to do it.
+      const text = decoder.decode(value, { stream: true });
+      try {
+        ws.send(text);
+      } catch {
+        return; // socket closed
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released
+    }
   }
-  out.TERM = "xterm-256color";
-  return out;
+}
+
+/** Drain the helper's stderr into the router log with a clear prefix. */
+async function pumpErr(bridge: Subprocess): Promise<void> {
+  const stderr = bridge.stderr;
+  if (!stderr || typeof stderr === "number") return;
+  const reader = (stderr as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      if (value && value.length > 0) {
+        process.stderr.write(`pty-bridge: ${decoder.decode(value)}`);
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released
+    }
+  }
 }

@@ -12,8 +12,7 @@
  */
 
 import path from "node:path";
-import type { ServerWebSocket } from "bun";
-import type { IPty } from "node-pty";
+import type { ServerWebSocket, Subprocess } from "bun";
 import {
   attachTmuxPty,
   closeTmuxPty,
@@ -38,7 +37,16 @@ export type DashboardEvent =
 
 export type DashboardWsData =
   | { kind: "events" }
-  | { kind: "tmux"; sessionName: string; pty?: IPty };
+  | {
+      kind: "tmux";
+      sessionName: string;
+      /** Subprocess running pty-bridge.js — owns the actual tmux PTY. */
+      bridge?: Subprocess;
+      /** Unique group-session name the dashboard created for itself.
+       *  Set by attachTmuxPty; used by closeTmuxPty to kill the mirror
+       *  session so grouped-session clones don't leak in tmux. */
+      groupName?: string;
+    };
 
 // ── Static file serving ───────────────────────────────────────────────────
 
