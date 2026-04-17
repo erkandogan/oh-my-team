@@ -79,9 +79,9 @@ export function connectEventStream(): void {
   startHeartbeat();
 }
 
-export function onEvent<T extends DashboardEvent>(
-  type: T["type"],
-  handler: (event: T) => void,
+export function onEvent<K extends EventType>(
+  type: K,
+  handler: (event: Extract<DashboardEvent, { type: K }>) => void,
 ): () => void {
   let set = listeners.get(type);
   if (!set) {
@@ -95,9 +95,9 @@ export function onEvent<T extends DashboardEvent>(
   };
 }
 
-export function useEventStream<T extends DashboardEvent>(
-  type: T["type"],
-  handler: (event: T) => void,
+export function useEventStream<K extends EventType>(
+  type: K,
+  handler: (event: Extract<DashboardEvent, { type: K }>) => void,
 ): void {
-  useEffect(() => onEvent<T>(type, handler), [type, handler]);
+  useEffect(() => onEvent(type, handler), [type, handler]);
 }
