@@ -16,6 +16,7 @@ import { setupWorkspaceDnd } from "@/lib/workspace-dnd";
 import { useKeyboardBindings } from "@/hooks/useKeyboardBindings";
 import type { KeyAction } from "@/lib/keybindings";
 import { registerClearWorkspace } from "@/components/ResetLayoutButton";
+import { toggleCommandPalette } from "@/components/CommandPalette";
 
 let dockviewApi: DockviewApi | null = null;
 
@@ -140,6 +141,7 @@ export default function Workspace() {
       case "open-minimized-tray":
         break;
       case "open-command-palette":
+        toggleCommandPalette();
         break;
     }
   }, []);

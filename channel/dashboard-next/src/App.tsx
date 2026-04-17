@@ -4,6 +4,7 @@ import TerminalPane from "@/components/TerminalPane";
 import { useTerminalMount } from "@/components/TerminalPool";
 import TopBar from "@/components/TopBar";
 import Workspace from "@/components/Workspace";
+import CommandPalette from "@/components/CommandPalette";
 import ReparentSpike from "@/_spike/ReparentSpike";
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
           <Workspace />
         </main>
       </div>
+      <CommandPalette />
     </div>
   );
 }
