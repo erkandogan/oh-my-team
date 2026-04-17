@@ -44,7 +44,7 @@
     "channel/dashboard-server.ts",
     "channel/dashboard-pty.ts",
     "channel/pty-bridge.cjs",
-    "channel/dashboard/",
+    "channel/dashboard/dist/",
     "channel/adapters/",
     "channel/slack-manifest.yml",
     "channel/package.json",
