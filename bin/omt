@@ -557,6 +557,14 @@ hub_start() {
         (cd "$CHANNEL_DIR" && bun install --no-summary 2>&1)
     fi
 
+    # node-pty ships a `spawn-helper` binary that bun's install sometimes
+    # leaves without the +x bit. Without it posix_spawnp fails silently and
+    # the dashboard terminal never opens. Cheap to make idempotent.
+    if [ -d "$CHANNEL_DIR/node_modules/node-pty/prebuilds" ]; then
+        find "$CHANNEL_DIR/node_modules/node-pty/prebuilds" \
+            -name spawn-helper -exec chmod +x {} \; 2>/dev/null
+    fi
+
     # Start the router
     if tmux has-session -t "omt-router" 2>/dev/null; then
         echo -e "${YELLOW}Router already running.${RESET}"
