@@ -7,6 +7,7 @@ import {
 } from "dockview-react";
 import { TerminalPanelComponent } from "@/components/panels/TerminalPanel";
 import { ActivityPanelComponent } from "@/components/panels/ActivityPanel";
+import { InfoPanelComponent } from "@/components/panels/InfoPanel";
 import { terminalPanelId, sessionNameFromPanelId } from "@/lib/panel-ids";
 import { disposeEntry } from "@/components/TerminalPool";
 import { setupLayoutPersistence } from "@/lib/layout-persistence";
@@ -44,6 +45,22 @@ export function openActivityPanel(sessionName: string): void {
     id,
     component: "activity",
     title: `Activity — ${sessionName}`,
+    params: { sessionName },
+  });
+}
+
+export function openInfoPanel(sessionName: string): void {
+  if (!dockviewApi) return;
+  const id = `info:${sessionName}`;
+  const existing = dockviewApi.getPanel(id);
+  if (existing) {
+    existing.focus();
+    return;
+  }
+  dockviewApi.addPanel({
+    id,
+    component: "info",
+    title: `Info — ${sessionName}`,
     params: { sessionName },
   });
 }
@@ -113,6 +130,7 @@ export default function Workspace() {
         placeholder: PlaceholderPanel,
         terminal: TerminalPanelComponent,
         activity: ActivityPanelComponent,
+        info: InfoPanelComponent,
       }}
       onReady={onReady}
     />
