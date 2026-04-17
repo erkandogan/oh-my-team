@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import {
   DockviewReact,
   DockviewReadyEvent,
@@ -10,6 +11,8 @@ import { terminalPanelId, sessionNameFromPanelId } from "@/lib/panel-ids";
 import { disposeEntry } from "@/components/TerminalPool";
 import { setupLayoutPersistence } from "@/lib/layout-persistence";
 import { setupWorkspaceDnd } from "@/lib/workspace-dnd";
+import { useKeyboardBindings } from "@/hooks/useKeyboardBindings";
+import type { KeyAction } from "@/lib/keybindings";
 
 let dockviewApi: DockviewApi | null = null;
 
@@ -69,6 +72,39 @@ export default function Workspace() {
     setupLayoutPersistence(event.api);
     setupWorkspaceDnd(event.api);
   };
+
+  const handleKeyAction = useCallback((action: KeyAction) => {
+    if (!dockviewApi) return;
+    switch (action) {
+      case "focus-next-right":
+      case "focus-next-left":
+      case "focus-next-up":
+      case "focus-next-down": {
+        const panels = dockviewApi.panels;
+        if (panels.length <= 1) return;
+        const activeIdx = panels.findIndex((p) => p.api.isActive);
+        if (activeIdx === -1) return;
+        const delta =
+          action === "focus-next-right" || action === "focus-next-down" ? 1 : -1;
+        const nextIdx = (activeIdx + delta + panels.length) % panels.length;
+        panels[nextIdx].focus();
+        break;
+      }
+      case "close-focused-panel": {
+        const active = dockviewApi.activePanel;
+        if (active) dockviewApi.removePanel(active);
+        break;
+      }
+      case "minimize-focused-panel":
+        break;
+      case "open-minimized-tray":
+        break;
+      case "open-command-palette":
+        break;
+    }
+  }, []);
+
+  useKeyboardBindings(handleKeyAction);
 
   return (
     <DockviewReact

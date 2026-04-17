@@ -15,6 +15,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { openPtySocket, type PtyHandle } from "@/lib/pty-client";
+import { KEYBINDINGS, matchesBinding } from "@/lib/keybindings";
 
 interface PoolEntry {
   host: HTMLDivElement;
@@ -58,6 +59,10 @@ function ensureEntry(sessionName: string): PoolEntry {
   });
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
+
+  terminal.attachCustomKeyEventHandler((e) => {
+    return !KEYBINDINGS.some((b) => matchesBinding(e, b));
+  });
 
   getParkingRoot().appendChild(host);
   terminal.open(host);
