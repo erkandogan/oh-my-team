@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 import TerminalPane from "@/components/TerminalPane";
 import Workspace from "@/components/Workspace";
 
@@ -8,8 +9,11 @@ export default function App() {
   }
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
-      <div className="flex-1 overflow-hidden">
-        <Workspace />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-hidden">
+          <Workspace />
+        </main>
       </div>
     </div>
   );
