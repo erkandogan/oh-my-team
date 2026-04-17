@@ -8,6 +8,7 @@ import {
 import { TerminalPanelComponent } from "@/components/panels/TerminalPanel";
 import { ActivityPanelComponent } from "@/components/panels/ActivityPanel";
 import { InfoPanelComponent } from "@/components/panels/InfoPanel";
+import { LogsPanelComponent } from "@/components/panels/LogsPanel";
 import { terminalPanelId, sessionNameFromPanelId } from "@/lib/panel-ids";
 import { disposeEntry } from "@/components/TerminalPool";
 import { setupLayoutPersistence } from "@/lib/layout-persistence";
@@ -45,6 +46,19 @@ export function openActivityPanel(sessionName: string): void {
     id,
     component: "activity",
     title: `Activity — ${sessionName}`,
+    params: { sessionName },
+  });
+}
+
+export function openLogsPanel(sessionName: string): void {
+  if (!dockviewApi) return;
+  const id = `logs:${sessionName}`;
+  const existing = dockviewApi.getPanel(id);
+  if (existing) { existing.focus(); return; }
+  dockviewApi.addPanel({
+    id,
+    component: "logs",
+    title: `Logs — ${sessionName}`,
     params: { sessionName },
   });
 }
@@ -131,6 +145,7 @@ export default function Workspace() {
         terminal: TerminalPanelComponent,
         activity: ActivityPanelComponent,
         info: InfoPanelComponent,
+        logs: LogsPanelComponent,
       }}
       onReady={onReady}
     />
