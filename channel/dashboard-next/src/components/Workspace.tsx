@@ -1,13 +1,44 @@
-import { DockviewReact, DockviewReadyEvent, IDockviewPanelProps } from "dockview-react";
+import {
+  DockviewReact,
+  DockviewReadyEvent,
+  IDockviewPanelProps,
+  DockviewApi,
+} from "dockview-react";
+import { TerminalPanelComponent } from "@/components/panels/TerminalPanel";
+import { terminalPanelId, sessionNameFromPanelId } from "@/lib/panel-ids";
+import { disposeEntry } from "@/components/TerminalPool";
+
+let dockviewApi: DockviewApi | null = null;
+
+export function openOrFocusTerminal(sessionName: string): void {
+  if (!dockviewApi) return;
+  const id = terminalPanelId(sessionName);
+  const existing = dockviewApi.getPanel(id);
+  if (existing) {
+    existing.focus();
+    return;
+  }
+  dockviewApi.addPanel({
+    id,
+    component: "terminal",
+    title: sessionName,
+    params: { sessionName },
+  });
+}
 
 const PlaceholderPanel = (_props: IDockviewPanelProps) => (
-  <div className="flex items-center justify-center h-full text-muted-foreground">
-    <p>Drag sessions here to open terminals</p>
+  <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+    <p>Drag sessions here or click a session to open a terminal</p>
   </div>
 );
 
 export default function Workspace() {
   const onReady = (event: DockviewReadyEvent) => {
+    dockviewApi = event.api;
+    event.api.onDidRemovePanel((panel) => {
+      const name = sessionNameFromPanelId(panel.id);
+      if (name) disposeEntry(name);
+    });
     event.api.addPanel({
       id: "welcome",
       component: "placeholder",
@@ -18,7 +49,10 @@ export default function Workspace() {
   return (
     <DockviewReact
       className="dockview-theme-dark h-full w-full"
-      components={{ placeholder: PlaceholderPanel }}
+      components={{
+        placeholder: PlaceholderPanel,
+        terminal: TerminalPanelComponent,
+      }}
       onReady={onReady}
     />
   );

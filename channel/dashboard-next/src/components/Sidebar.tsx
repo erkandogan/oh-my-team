@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSessions, type Session } from "@/stores/sessions";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { openOrFocusTerminal } from "@/components/Workspace";
 
 export default function Sidebar() {
   const [filter, setFilter] = useState("");
@@ -52,8 +53,9 @@ function SessionItem({ session }: { session: Session }) {
   return (
     <li
       draggable
+      onClick={() => openOrFocusTerminal(session.name)}
       onDragStart={onDragStart}
-      className="flex items-center gap-2 px-3 py-2 cursor-grab hover:bg-muted border-b border-border/50"
+      className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted border-b border-border/50"
     >
       <span
         className={cn(
