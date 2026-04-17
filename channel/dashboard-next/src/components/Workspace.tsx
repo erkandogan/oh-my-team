@@ -5,9 +5,11 @@ import {
   DockviewApi,
 } from "dockview-react";
 import { TerminalPanelComponent } from "@/components/panels/TerminalPanel";
+import { ActivityPanelComponent } from "@/components/panels/ActivityPanel";
 import { terminalPanelId, sessionNameFromPanelId } from "@/lib/panel-ids";
 import { disposeEntry } from "@/components/TerminalPool";
 import { setupLayoutPersistence } from "@/lib/layout-persistence";
+import { setupWorkspaceDnd } from "@/lib/workspace-dnd";
 
 let dockviewApi: DockviewApi | null = null;
 
@@ -23,6 +25,22 @@ export function openOrFocusTerminal(sessionName: string): void {
     id,
     component: "terminal",
     title: sessionName,
+    params: { sessionName },
+  });
+}
+
+export function openActivityPanel(sessionName: string): void {
+  if (!dockviewApi) return;
+  const id = `activity:${sessionName}`;
+  const existing = dockviewApi.getPanel(id);
+  if (existing) {
+    existing.focus();
+    return;
+  }
+  dockviewApi.addPanel({
+    id,
+    component: "activity",
+    title: `Activity — ${sessionName}`,
     params: { sessionName },
   });
 }
@@ -49,6 +67,7 @@ export default function Workspace() {
       });
     }
     setupLayoutPersistence(event.api);
+    setupWorkspaceDnd(event.api);
   };
 
   return (
@@ -57,6 +76,7 @@ export default function Workspace() {
       components={{
         placeholder: PlaceholderPanel,
         terminal: TerminalPanelComponent,
+        activity: ActivityPanelComponent,
       }}
       onReady={onReady}
     />

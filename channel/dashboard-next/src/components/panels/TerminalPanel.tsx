@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
-import { openActivityPanel, openInfoPanel } from "@/components/Workspace";
+import { openActivityPanel, openInfoPanel, openLogsPanel } from "@/components/Workspace";
 
 export interface TerminalPanelParams {
   sessionName: string;
@@ -41,6 +41,12 @@ export function TerminalPanelComponent({ params, api }: IDockviewPanelProps<Term
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={() => openActivityPanel(sessionName)}>
               + Activity
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openInfoPanel(sessionName)}>
+              + Info
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openLogsPanel(sessionName)}>
+              + Logs
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => apiClient.restart(sessionName)}>
               Restart
