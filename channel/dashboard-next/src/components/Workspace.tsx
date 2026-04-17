@@ -17,6 +17,12 @@ import { useKeyboardBindings } from "@/hooks/useKeyboardBindings";
 import type { KeyAction } from "@/lib/keybindings";
 import { registerClearWorkspace } from "@/components/ResetLayoutButton";
 import { toggleCommandPalette } from "@/components/CommandPalette";
+import {
+  minimizeActivePanel,
+  openMinimizedTray,
+  registerMinimizeActive,
+} from "@/components/MinimizedTray";
+import { useTrayStore } from "@/stores/tray";
 
 let dockviewApi: DockviewApi | null = null;
 
@@ -92,7 +98,11 @@ export default function Workspace() {
     dockviewApi = event.api;
     event.api.onDidRemovePanel((panel) => {
       const name = sessionNameFromPanelId(panel.id);
-      if (name) disposeEntry(name);
+      if (!name) return;
+      // Minimize removes the panel from the view but keeps the PTY alive in
+      // the pool; only dispose when the removal wasn't a minimize.
+      if (useTrayStore.getState().minimized.has(name)) return;
+      disposeEntry(name);
     });
     const hasSaved = !!localStorage.getItem("omt.workspace.layout.v1");
     if (!hasSaved) {
@@ -111,6 +121,20 @@ export default function Workspace() {
         component: "placeholder",
         title: "Welcome",
       });
+    });
+    registerMinimizeActive(() => {
+      if (!dockviewApi) return;
+      const active = dockviewApi.activePanel;
+      if (!active) return;
+      const name = sessionNameFromPanelId(active.id);
+      if (!name) return;
+      useTrayStore.getState().minimize(name);
+      dockviewApi.removePanel(active);
+    });
+    useTrayStore.subscribe((state, prev) => {
+      for (const name of prev.minimized) {
+        if (!state.minimized.has(name)) openOrFocusTerminal(name);
+      }
     });
   };
 
@@ -137,8 +161,10 @@ export default function Workspace() {
         break;
       }
       case "minimize-focused-panel":
+        minimizeActivePanel();
         break;
       case "open-minimized-tray":
+        openMinimizedTray();
         break;
       case "open-command-palette":
         toggleCommandPalette();
