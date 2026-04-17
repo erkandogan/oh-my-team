@@ -21,6 +21,7 @@ bun.lock
 # Channel build artifacts
 channel/dist/
 channel/node_modules/
+channel/dashboard/node_modules/
 
 # Hub state (local, not committed)
 hub-registry.json
@@ -32,3 +33,10 @@ attachments/
 
 # Claude Code local state
 .sisyphus/
+channel/dashboard/dist/
+
+# Scratch / marketing drafts
+devto-post.md
+producthunt-listing.md
+reddit-post.md
+package-lock.json

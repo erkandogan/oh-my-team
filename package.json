@@ -1,13 +1,15 @@
 {
   "name": "oh-my-team",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "Multi-agent orchestration for Claude Code. 12 specialized agents, parallel execution, and a Hub for always-alive sessions controllable from Telegram or Slack.",
   "bin": {
     "omt": "bin/omt"
   },
   "scripts": {
     "build:init": "bun build bin/hub-init.ts --outfile bin/hub-init.mjs --target node",
-    "postinstall": "node ./bin/postinstall.js"
+    "postinstall": "node ./bin/postinstall.js",
+    "build:dashboard": "cd channel/dashboard && bun install && bun run build",
+    "prepublishOnly": "npm run build:dashboard"
   },
   "keywords": [
     "claude-code",
@@ -39,6 +41,10 @@
     "channel/bridge.ts",
     "channel/bridge.mcp.json",
     "channel/router.ts",
+    "channel/dashboard-server.ts",
+    "channel/dashboard-pty.ts",
+    "channel/pty-bridge.cjs",
+    "channel/dashboard/dist/",
     "channel/adapters/",
     "channel/slack-manifest.yml",
     "channel/package.json",

@@ -21,6 +21,11 @@ import type {
   InboundMessage,
 } from "./adapters/types";
 import { removeAttachmentDir } from "./adapters/media";
+import {
+  handleDashboardRequest,
+  broadcastEvent,
+  dashboardWebSocketHandlers,
+} from "./dashboard-server";
 import path from "node:path";
 
 // ── Configuration ──────────────────────────────────────────────────────────
@@ -312,9 +317,39 @@ Bun.serve({
   port: ROUTER_PORT,
   hostname: "127.0.0.1",
 
-  async fetch(req) {
+  websocket: dashboardWebSocketHandlers,
+
+  async fetch(req, server) {
     const url = new URL(req.url);
     const method = req.method;
+
+    // Dashboard routes may return "upgrade" to hand off to WebSocket.
+    // Doing this at the top of fetch() keeps all WS routing in one place.
+    if (url.pathname.startsWith("/ws/")) {
+      const dashDecision = await handleDashboardRequest(req, {
+        registry,
+        platform: config.platform,
+        routerPort: ROUTER_PORT,
+        hubDir: OMT_HUB_DIR,
+      });
+      if (dashDecision === "upgrade") {
+        // Pick the right data payload based on the URL so the WS handlers
+        // know whether this is an event stream or a PTY attachment.
+        let wsData: { kind: "events" } | { kind: "tmux"; sessionName: string };
+        if (url.pathname === "/ws/events") {
+          wsData = { kind: "events" };
+        } else {
+          const sessionName = url.pathname.slice("/ws/tmux/".length);
+          if (!sessionName || !registry.sessions[sessionName]) {
+            return new Response("session not found", { status: 404 });
+          }
+          wsData = { kind: "tmux", sessionName };
+        }
+        if (server.upgrade(req, { data: wsData })) return undefined;
+        return new Response("upgrade failed", { status: 400 });
+      }
+      if (dashDecision instanceof Response) return dashDecision;
+    }
 
     // ── Health check ─────────────────────────────────────────────────
 
@@ -388,6 +423,16 @@ Bun.serve({
           `omt-router: Re-registered session "${name}" → port ${bridgePort} (reused thread ${existing.threadId})\n`
         );
 
+        broadcastEvent({
+          type: "session.registered",
+          name,
+          path: existing.path,
+          threadId: existing.threadId,
+          bridgePort: existing.bridgePort,
+          threadDisplayName: existing.threadDisplayName,
+          startedAt: existing.startedAt,
+        });
+
         return Response.json(existing, { status: 200 });
       }
 
@@ -440,6 +485,16 @@ Bun.serve({
         `omt-router: Registered session "${name}" → port ${bridgePort}, thread ${threadId}\n`
       );
 
+      broadcastEvent({
+        type: "session.registered",
+        name: entry.name,
+        path: entry.path,
+        threadId: entry.threadId,
+        bridgePort: entry.bridgePort,
+        threadDisplayName: entry.threadDisplayName,
+        startedAt: entry.startedAt,
+      });
+
       return Response.json(entry, { status: 201 });
     }
 
@@ -469,6 +524,8 @@ Bun.serve({
       saveRegistry(registry);
 
       process.stderr.write(`omt-router: Unregistered session "${name}"\n`);
+
+      broadcastEvent({ type: "session.removed", name });
 
       return Response.json({ status: "removed" });
     }
@@ -560,6 +617,7 @@ Bun.serve({
           adapter.updateStatusMessage(session.threadId, status.messageId, lines.join("\n")).catch(() => {});
         }
         clearSessionStatus(sessionName);
+        broadcastEvent({ type: "session.status.cleared", name: sessionName });
         return Response.json({ status: "cleared" });
       }
 
@@ -571,6 +629,17 @@ Bun.serve({
         status.current = null;
         status.done.push(statusText);
       }
+
+      // Push to dashboard immediately — unlike the platform adapter which
+      // rate-limits to avoid Telegram/Slack throttling, localhost clients
+      // can handle a steady stream of events.
+      broadcastEvent({
+        type: "session.status",
+        name: sessionName,
+        current: status.current,
+        done: status.done,
+        elapsedMs: Date.now() - status.startedAt,
+      });
 
       // Mark status as dirty and schedule a debounced flush. Instead of
       // calling updateStatusMessage on every single hook event (~20 calls
@@ -625,6 +694,16 @@ Bun.serve({
       }
     }
 
+    // ── Dashboard (UI + REST API) ────────────────────────────────────
+    // WebSocket paths already short-circuited at the top of fetch.
+    const dashResponse = await handleDashboardRequest(req, {
+      registry,
+      platform: config.platform,
+      routerPort: ROUTER_PORT,
+      hubDir: OMT_HUB_DIR,
+    });
+    if (dashResponse instanceof Response) return dashResponse;
+
     // ── 404 ──────────────────────────────────────────────────────────
 
     return Response.json({ error: "not found" }, { status: 404 });
@@ -642,4 +721,21 @@ process.on("SIGINT", async () => {
 process.on("SIGTERM", async () => {
   await adapter.disconnect();
   process.exit(0);
+});
+
+// ── Safety net ─────────────────────────────────────────────────────────────
+// An uncaught error from anywhere in the HTTP/WebSocket handlers (dashboard
+// code, adapters, etc.) used to take the whole router down with it, severing
+// every bridge. Log and keep running — sessions stay alive, a bad handler
+// fails isolated to its request.
+
+process.on("uncaughtException", (err) => {
+  process.stderr.write(
+    `omt-router: UNCAUGHT EXCEPTION: ${err.stack || err.message}\n`
+  );
+});
+process.on("unhandledRejection", (reason) => {
+  const msg =
+    reason instanceof Error ? reason.stack || reason.message : String(reason);
+  process.stderr.write(`omt-router: UNHANDLED REJECTION: ${msg}\n`);
 });

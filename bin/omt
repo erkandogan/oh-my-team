@@ -529,10 +529,16 @@ except: pass
 
 hub_start() {
     local CONTINUE_FLAG=""
-    if [ "$1" = "-c" ] || [ "$1" = "--continue" ]; then
-        CONTINUE_FLAG="--continue"
-        shift
-    fi
+    local OPEN_BROWSER=1
+
+    # Parse flags — support any order
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -c|--continue)  CONTINUE_FLAG="--continue"; shift ;;
+            --no-browser)   OPEN_BROWSER=0; shift ;;
+            *)              break ;;
+        esac
+    done
 
     # Auto-continue: if the hub was previously initialized, resume the
     # conversation instead of starting fresh (unless user passed -c explicitly).
@@ -549,6 +555,36 @@ hub_start() {
     if [ ! -d "$CHANNEL_DIR/node_modules" ]; then
         echo -e "${YELLOW}Installing channel dependencies...${RESET}"
         (cd "$CHANNEL_DIR" && bun install --no-summary 2>&1)
+    fi
+
+    # node-pty ships a `spawn-helper` binary that bun's install sometimes
+    # leaves without the +x bit. Without it posix_spawnp fails silently and
+    # the dashboard terminal never opens. Cheap to make idempotent.
+    if [ -d "$CHANNEL_DIR/node_modules/node-pty/prebuilds" ]; then
+        find "$CHANNEL_DIR/node_modules/node-pty/prebuilds" \
+            -name spawn-helper -exec chmod +x {} \; 2>/dev/null
+    fi
+
+    # Build the dashboard if its compiled output is missing. npm installs ship
+    # a pre-built dist/ inside the tarball, so end users skip this branch.
+    # Fresh git clones (where dist/ is gitignored) hit it once and we build
+    # instead of leaving the user staring at a 404 dashboard.
+    local DASHBOARD_DIR="$CHANNEL_DIR/dashboard"
+    if [ -f "$DASHBOARD_DIR/package.json" ] && [ ! -f "$DASHBOARD_DIR/dist/index.html" ]; then
+        echo -e "${YELLOW}Building dashboard (first-run)...${RESET}"
+        # Each step runs unpiped so a bun install failure (e.g. offline, npm
+        # registry down) surfaces the real error and aborts the branch
+        # instead of silently continuing to a doomed `bun run build`.
+        if ! (cd "$DASHBOARD_DIR" && bun install --no-summary); then
+            echo -e "${RED}Dashboard dependency install failed.${RESET}"
+            echo -e "  Run ${CYAN}cd $DASHBOARD_DIR && bun install${RESET} to see the error, then retry."
+            exit 1
+        fi
+        if ! (cd "$DASHBOARD_DIR" && bun run build); then
+            echo -e "${RED}Dashboard build failed.${RESET}"
+            echo -e "  Run ${CYAN}cd $DASHBOARD_DIR && bun run build${RESET} to inspect."
+            exit 1
+        fi
     fi
 
     # Start the router
@@ -687,6 +723,7 @@ ENVEOF
     echo -e "  ${DIM}Router:${RESET}    http://localhost:$ROUTER_PORT"
     echo -e "  ${DIM}Hub:${RESET}       http://localhost:$HUB_BRIDGE_PORT"
     echo -e "  ${DIM}Attach:${RESET}    omt hub attach"
+    echo -e "  ${DIM}Dashboard:${RESET} http://localhost:$ROUTER_PORT/dashboard"
     if [ "$platform" = "slack" ]; then
         echo -e "  ${DIM}Slack:${RESET}     Post a message in the channel"
     else
@@ -702,6 +739,12 @@ ENVEOF
 
     # ── Restore previous sessions ──────────────────────────────────
     hub_restore_sessions
+
+    # Auto-open the dashboard in the user's browser on local machines.
+    # Skipped when --no-browser is passed, over SSH, or on headless Linux.
+    if [ "$OPEN_BROWSER" = "1" ]; then
+        open_browser "http://localhost:$ROUTER_PORT/dashboard"
+    fi
 }
 
 hub_add() {
@@ -972,6 +1015,40 @@ hub_logs() {
     fi
 }
 
+# ── Dashboard ───────────────────────────────────────────────────────────
+
+# Open a URL in the platform's default browser. No-op when running
+# headless (SSH, CI, $DISPLAY unset on Linux) so users over remote shells
+# aren't surprised by failed "open" / "xdg-open" calls.
+open_browser() {
+    local url="$1"
+
+    # Explicit opt-out
+    if [ "$OMT_NO_BROWSER" = "1" ]; then return; fi
+
+    # Heuristic: skip over SSH or on headless Linux
+    if [ -n "$SSH_CONNECTION" ] || [ -n "$SSH_TTY" ]; then return; fi
+
+    case "$(uname -s)" in
+        Darwin) open "$url" 2>/dev/null || true ;;
+        Linux)
+            [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && return
+            xdg-open "$url" 2>/dev/null || true ;;
+        *) return ;;
+    esac
+}
+
+dashboard_cmd() {
+    local url="http://localhost:$ROUTER_PORT/dashboard"
+    if ! curl -s "http://localhost:$ROUTER_PORT/health" > /dev/null 2>&1; then
+        echo -e "${YELLOW}Hub is not running.${RESET}"
+        echo -e "  Run ${CYAN}omt hub start${RESET} first, then ${CYAN}omt dashboard${RESET}."
+        return 1
+    fi
+    echo -e "${GREEN}Opening dashboard:${RESET} $url"
+    open_browser "$url"
+}
+
 hub_cmd() {
     case "${1:-status}" in
         init)       shift; hub_init "$@" ;;
@@ -995,6 +1072,11 @@ if [ "$1" = "hub" ]; then
     exit $?
 fi
 
+if [ "$1" = "dashboard" ]; then
+    dashboard_cmd
+    exit $?
+fi
+
 if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "omt — Oh My Team CLI"
     echo ""
@@ -1007,7 +1089,7 @@ if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  omt hub init                    Configure hub (interactive)"
     echo "  omt hub init --telegram --token <t> --chat-id <id>"
     echo "  omt hub init --slack --token <xoxb> --app-token <xapp> --channel-id <C>"
-    echo "  omt hub start [-c]               Start router + hub session (-c to continue)"
+    echo "  omt hub start [-c] [--no-browser] Start router + hub (opens dashboard by default)"
     echo "  omt hub add <dir> [-c]           Add a project session (-c to continue)"
     echo "  omt hub remove <name>            Stop a project session"
     echo "  omt hub list                     List active sessions"
@@ -1016,6 +1098,9 @@ if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  omt hub stop                     Stop hub (preserves sessions for resume)"
     echo "  omt hub stop --clean             Stop hub and close all threads"
     echo "  omt hub logs                     View router logs"
+    echo ""
+    echo "Dashboard:"
+    echo "  omt dashboard                    Open the web dashboard in your browser"
     exit 0
 fi
 
