@@ -34,3 +34,9 @@ attachments/
 # Claude Code local state
 .sisyphus/
 channel/dashboard/dist/
+
+# Scratch / marketing drafts
+devto-post.md
+producthunt-listing.md
+reddit-post.md
+package-lock.json
